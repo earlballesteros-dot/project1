@@ -7,6 +7,9 @@ export interface StreetlightReport {
   landmark: string;
   poleNumber: string;
   issueType: string;
+  description?: string;
+  contactInfo?: string;
+  photoUrl?: string;
   reportedDate: string;
   status: ReportStatus;
   priority: PriorityLevel;
@@ -37,6 +40,8 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     landmark: "Corner J.C. Aquino Ave & Montilla Blvd",
     poleNumber: "BXU-LIB-048",
     issueType: "Total Outage / Unlit Pole",
+    description: "Main roadway light completely out since yesterday evening, causing severe dark spot near junction.",
+    contactInfo: "0917 555 2341",
     reportedDate: "2026-09-23",
     status: "Pending",
     priority: "High",
@@ -49,6 +54,8 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     landmark: "Near Caraga State University Main Gate",
     poleNumber: "BXU-AMP-112",
     issueType: "Flickering Light",
+    description: "Light strobes rapidly every few seconds, making crossing the highway hazardous at night.",
+    contactInfo: "0920 123 9876",
     reportedDate: "2026-09-22",
     status: "In Progress",
     priority: "Medium",
@@ -61,6 +68,8 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     landmark: "Purok 3 near Covered Court",
     poleNumber: "BXU-DNG-027",
     issueType: "Broken Fixture / Fallen Glass",
+    description: "Fixture housing broken after heavy winds. Glass debris cleared but post has dangling wires.",
+    contactInfo: "0908 776 5432",
     reportedDate: "2026-09-22",
     status: "In Progress",
     priority: "High",
@@ -73,6 +82,8 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     landmark: "Rosales Street, adjacent to Day Care Center",
     poleNumber: "BXU-VK-084",
     issueType: "Exposed Wire Hazard",
+    description: "Dangling wire with exposed copper near school fence, sparking when rain falls.",
+    contactInfo: "0939 444 8821",
     reportedDate: "2026-09-21",
     status: "Pending",
     priority: "Emergency",
@@ -85,6 +96,8 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     landmark: "Airport Road bypass junction",
     poleNumber: "BXU-BAN-019",
     issueType: "Continuous Day Burning",
+    description: "Photocell daylight sensor failed; lamp stays continuously lit 24/7 wasting public power.",
+    contactInfo: "0918 333 1199",
     reportedDate: "2026-09-20",
     status: "Resolved",
     priority: "Low",
@@ -97,6 +110,8 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     landmark: "Purok 6 Riverside Road",
     poleNumber: "BXU-SV-063",
     issueType: "Total Outage",
+    description: "Bulb burnt out after thunderstorm lightning surge. Replaced with 100W LED module.",
+    contactInfo: "0922 888 7766",
     reportedDate: "2026-09-19",
     status: "Resolved",
     priority: "Medium",
@@ -112,6 +127,8 @@ export const MOCK_RESIDENT_REPORTS: StreetlightReport[] = [
     landmark: "Corner J.C. Aquino Ave & Montilla Blvd",
     poleNumber: "BXU-LIB-048",
     issueType: "Total Outage / Unlit Pole",
+    description: "Main roadway light completely out since yesterday evening, causing severe dark spot near junction.",
+    contactInfo: "0917 555 2341",
     reportedDate: "2026-09-23",
     status: "Pending",
     priority: "High",
@@ -124,6 +141,8 @@ export const MOCK_RESIDENT_REPORTS: StreetlightReport[] = [
     landmark: "Purok 2 near Elementary School",
     poleNumber: "BXU-LIB-012",
     issueType: "Flickering Fixture",
+    description: "Lamp turns on and off continuously during peak evening walking hours.",
+    contactInfo: "0917 555 2341",
     reportedDate: "2026-09-10",
     status: "Resolved",
     priority: "Medium",

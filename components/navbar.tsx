@@ -41,13 +41,13 @@ export function Navbar() {
             Home
           </Link>
           <Link
-            href="#features"
+            href="/#features"
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             How It Works
           </Link>
           <Link
-            href="#barangays"
+            href="/#barangays"
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             Coverage
@@ -107,14 +107,14 @@ export function Navbar() {
               Home
             </Link>
             <Link
-              href="#features"
+              href="/#features"
               onClick={() => setMobileMenuOpen(false)}
               className="py-1.5 text-muted-foreground hover:text-foreground"
             >
               How It Works
             </Link>
             <Link
-              href="#barangays"
+              href="/#barangays"
               onClick={() => setMobileMenuOpen(false)}
               className="py-1.5 text-muted-foreground hover:text-foreground"
             >

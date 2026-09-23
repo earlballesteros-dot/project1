@@ -88,7 +88,7 @@ export default function Home() {
 
               {/* Hero Visual Card / Live Status Mock Preview */}
               <div className="lg:col-span-5">
-                <Card className="border-border shadow-lg">
+                <Card id="live-status" className="border-border shadow-lg">
                   <CardHeader className="border-b bg-muted/30 pb-4">
                     <div className="flex items-center justify-between">
                       <Badge variant="secondary" className="gap-1.5 text-xs font-medium">
@@ -135,7 +135,7 @@ export default function Home() {
                   </CardContent>
                   <CardFooter className="flex items-center justify-between border-t bg-muted/20 text-xs text-muted-foreground py-3">
                     <span>Active Dispatches: 26</span>
-                    <Link href="/admin" className="font-medium text-primary hover:underline">
+                    <Link href="/admin#reports" className="font-medium text-primary hover:underline">
                       View full dispatch table &rarr;
                     </Link>
                   </CardFooter>

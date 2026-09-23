@@ -38,7 +38,7 @@ export function Footer() {
             <Link href="/admin" className="hover:text-foreground transition-colors">
               City Admin Portal
             </Link>
-            <Link href="#barangays" className="hover:text-foreground transition-colors">
+            <Link href="/#barangays" className="hover:text-foreground transition-colors">
               Monitored Barangays
             </Link>
           </div>

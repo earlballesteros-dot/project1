@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Menu, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,18 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Navigation Quick Links */}
+        <Link href="/" className="hidden lg:inline-flex">
+          <Button variant="ghost" size="sm" className="text-xs">
+            Public Home
+          </Button>
+        </Link>
+        <Link href="/resident" className="hidden lg:inline-flex">
+          <Button variant="outline" size="sm" className="text-xs">
+            Resident Portal
+          </Button>
+        </Link>
+
         {/* Notification Bell with Badge */}
         <div className="relative">
           <Button variant="outline" size="icon-sm" aria-label="Notifications">

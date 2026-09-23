@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Lightbulb, ArrowLeft, Shield } from "lucide-react";
+import { useState } from "react";
+import { Lightbulb, ArrowLeft, Shield, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export function ResidentNav() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-md">
       <div className="container mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -35,7 +38,7 @@ export function ResidentNav() {
           <Link href="/resident" className="text-foreground hover:text-primary transition-colors">
             My Incident Reports
           </Link>
-          <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
+          <Link href="/#live-status" className="text-muted-foreground hover:text-foreground transition-colors">
             Public Status
           </Link>
           <Link href="/admin" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
@@ -62,8 +65,58 @@ export function ResidentNav() {
               <span className="text-[10px] text-muted-foreground">Brgy. Libertad, BXU</span>
             </div>
           </div>
+
+          {/* Mobile Menu Trigger */}
+          <div className="flex md:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Mobile Dropdown */}
+      {mobileMenuOpen && (
+        <div className="border-b bg-background px-4 py-4 md:hidden">
+          <nav className="flex flex-col gap-3 text-sm">
+            <Link
+              href="/resident"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 font-medium text-foreground hover:text-primary"
+            >
+              My Incident Reports
+            </Link>
+            <Link
+              href="/#live-status"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-muted-foreground hover:text-foreground"
+            >
+              Public Status
+            </Link>
+            <Link
+              href="/admin"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+            >
+              <Shield className="size-4 text-primary" />
+              Switch to Admin View
+            </Link>
+            <div className="pt-2 border-t">
+              <Link href="/" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="outline" className="w-full">
+                  <ArrowLeft data-icon="inline-start" />
+                  Public Home
+                </Button>
+              </Link>
+            </div>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }
