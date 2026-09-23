@@ -43,11 +43,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { type StreetlightReport, type ReportStatus } from "@/lib/mock-data";
+import { type StreetlightReport, type ReportStatus, MOCK_REPORTS } from "@/lib/mock-data";
 import { getStoredReports, updateReportStatus } from "@/lib/reports-store";
 
 export default function AdminDashboard() {
-  const [reports, setReports] = useState<StreetlightReport[]>([]);
+  const [reports, setReports] = useState<StreetlightReport[]>(MOCK_REPORTS);
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [selectedReport, setSelectedReport] = useState<StreetlightReport | null>(null);
 

@@ -88,7 +88,7 @@ export default function ResidentProblemReportingPage() {
   } | null>(null);
 
   // Incident reports table state
-  const [reportsList, setReportsList] = useState<StreetlightReport[]>([]);
+  const [reportsList, setReportsList] = useState<StreetlightReport[]>(MOCK_RESIDENT_REPORTS);
 
   // Synchronize with shared local storage
   useEffect(() => {
@@ -187,7 +187,7 @@ export default function ResidentProblemReportingPage() {
             ? "Emergency"
             : "High",
         assignedTeam: "Pending Dispatch",
-        residentName: `${reporterName} (You)`,
+        residentName: reporterName,
       };
 
       const updated = saveReport(newReportItem);
