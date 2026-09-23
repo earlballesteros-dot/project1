@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Lightbulb, Phone, ShieldCheck, MapPin } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Footer() {
   return (
@@ -82,6 +83,7 @@ export function Footer() {
             &copy; {new Date().getFullYear()} Butuan City Streetlight Problem Reporting and Monitoring System. Academic Project.
           </p>
           <div className="flex items-center gap-4">
+            <ThemeToggle showLabel />
             <span className="text-muted-foreground flex items-center gap-1">
               <ShieldCheck className="size-3.5 text-emerald-500" />
               Community Safety Initiative

@@ -5,6 +5,7 @@ import { Menu, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface AdminHeaderProps {
   onToggleSidebar: () => void;
@@ -52,6 +53,9 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
             Resident Portal
           </Button>
         </Link>
+
+        {/* Theme Toggle */}
+        <ThemeToggle />
 
         {/* Notification Bell with Badge */}
         <div className="relative">

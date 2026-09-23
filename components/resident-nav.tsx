@@ -6,6 +6,7 @@ import { Lightbulb, ArrowLeft, Shield, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function ResidentNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -47,8 +48,9 @@ export function ResidentNav() {
           </Link>
         </nav>
 
-        {/* User Profile & Back to Home */}
-        <div className="flex items-center gap-3">
+        {/* User Profile, Theme & Back to Home */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <ThemeToggle />
           <Link href="/">
             <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ArrowLeft data-icon="inline-start" />
@@ -66,8 +68,9 @@ export function ResidentNav() {
             </div>
           </div>
 
-          {/* Mobile Menu Trigger */}
-          <div className="flex md:hidden">
+          {/* Mobile Menu Trigger & Theme */}
+          <div className="flex md:hidden items-center gap-1">
+            <ThemeToggle />
             <Button
               variant="ghost"
               size="icon"

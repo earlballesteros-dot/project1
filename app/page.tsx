@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
+import { Beams } from "@/components/beams";
 import { MOCK_BARANGAYS, MOCK_STATS } from "@/lib/mock-data";
 
 export default function Home() {
@@ -32,7 +33,20 @@ export default function Home() {
       <main className="flex-1">
         {/* Hero Section */}
         <section className="relative overflow-hidden border-b bg-gradient-to-b from-muted/50 via-background to-background py-16 sm:py-24">
-          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          {/* React Bits Beams Background - Hero Only */}
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-35 dark:opacity-45">
+            <Beams
+              beamWidth={2}
+              beamHeight={15}
+              beamNumber={12}
+              speed={1.5}
+              noiseIntensity={1.5}
+              scale={0.2}
+              rotation={15}
+            />
+          </div>
+
+          <div className="container relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12">
               <div className="flex flex-col items-start gap-6 lg:col-span-7">
                 <Badge variant="outline" className="gap-2 px-3 py-1 text-xs border-primary/30">

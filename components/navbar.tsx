@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Lightbulb, Menu, X, ArrowRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -68,7 +69,8 @@ export function Navbar() {
         </nav>
 
         {/* Action Buttons */}
-        <div className="hidden sm:flex items-center gap-3">
+        <div className="hidden sm:flex items-center gap-2.5">
+          <ThemeToggle />
           <Link href="/admin">
             <Button variant="ghost" size="sm">
               Staff Sign In
@@ -82,8 +84,9 @@ export function Navbar() {
           </Link>
         </div>
 
-        {/* Mobile Menu Trigger */}
-        <div className="flex md:hidden">
+        {/* Mobile Menu Trigger & Theme */}
+        <div className="flex md:hidden items-center gap-1.5">
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="icon"
