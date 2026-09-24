@@ -6,6 +6,12 @@ import { Lightbulb, Menu, X, ArrowRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  Show,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -71,22 +77,35 @@ export function Navbar() {
         {/* Action Buttons */}
         <div className="hidden sm:flex items-center gap-2.5">
           <ThemeToggle />
-          <Link href="/admin">
-            <Button variant="ghost" size="sm">
-              Staff Sign In
-            </Button>
-          </Link>
-          <Link href="/resident">
-            <Button size="sm">
-              Report Streetlight
-              <ArrowRight data-icon="inline-end" />
-            </Button>
-          </Link>
+          <Show when="signed-out">
+            <SignInButton mode="modal">
+              <Button variant="ghost" size="sm">
+                Sign In
+              </Button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <Button size="sm">
+                Sign Up
+              </Button>
+            </SignUpButton>
+          </Show>
+          <Show when="signed-in">
+            <Link href="/resident">
+              <Button variant="outline" size="sm">
+                Report Streetlight
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </Link>
+            <UserButton />
+          </Show>
         </div>
 
         {/* Mobile Menu Trigger & Theme */}
-        <div className="flex md:hidden items-center gap-1.5">
+        <div className="flex md:hidden items-center gap-2">
           <ThemeToggle />
+          <Show when="signed-in">
+            <UserButton />
+          </Show>
           <Button
             variant="ghost"
             size="icon"
@@ -138,14 +157,27 @@ export function Navbar() {
               Admin Dashboard
             </Link>
             <div className="flex flex-col gap-2 pt-3 border-t">
-              <Link href="/resident" onClick={() => setMobileMenuOpen(false)}>
-                <Button className="w-full">Report Outage Now</Button>
-              </Link>
-              <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="outline" className="w-full">
-                  Admin Dashboard Login
-                </Button>
-              </Link>
+              <Show when="signed-out">
+                <SignInButton mode="modal">
+                  <Button variant="outline" className="w-full">
+                    Sign In
+                  </Button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <Button className="w-full">
+                    Sign Up
+                  </Button>
+                </SignUpButton>
+              </Show>
+              <Show when="signed-in">
+                <div className="flex items-center justify-between py-1 px-1">
+                  <span className="text-xs text-muted-foreground">My Account</span>
+                  <UserButton showName />
+                </div>
+                <Link href="/resident" onClick={() => setMobileMenuOpen(false)}>
+                  <Button className="w-full">Report Outage Now</Button>
+                </Link>
+              </Show>
             </div>
           </nav>
         </div>
