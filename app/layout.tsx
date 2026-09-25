@@ -34,25 +34,6 @@ export default function RootLayout({
       className={`${inter.variable} ${geistMono.variable} font-sans h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var stored = localStorage.getItem('theme');
-                  var isDark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-                  if (isDark) {
-                    document.documentElement.classList.add('dark');
-                  } else {
-                    document.documentElement.classList.remove('dark');
-                  }
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
-      </head>
       <body className="min-h-full flex flex-col font-sans">
         <ClerkProvider dynamic appearance={{ theme: shadcn }}>
           <ThemeProvider>{children}</ThemeProvider>

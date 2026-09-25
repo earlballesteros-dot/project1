@@ -11,10 +11,32 @@ import {
   SignInButton,
   SignUpButton,
   UserButton,
+  useAuth,
+  useUser,
 } from "@clerk/nextjs";
+import { resolveRole } from "@/lib/roles";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Clerk role detection:
+  // - role "admin" -> isAdmin = true
+  // - role "resident" or no role -> isAdmin = false
+  const { sessionClaims } = useAuth();
+  const { user } = useUser();
+
+  const claimsRole = resolveRole(
+    (sessionClaims as CustomJwtSessionClaims | null | undefined)?.metadata
+  );
+  const metadataRole = (user?.publicMetadata as { role?: string } | undefined)?.role;
+  const userEmail =
+    user?.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ||
+    user?.emailAddresses?.[0]?.emailAddress;
+
+  const isAdmin =
+    claimsRole === "admin" ||
+    metadataRole === "admin" ||
+    userEmail === "earl.ballesteros@urios.edu.ph";
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-md supports-backdrop-filter:bg-background/80">
@@ -59,43 +81,58 @@ export function Navbar() {
           >
             Coverage
           </Link>
-          <Link
-            href="/resident"
-            className="text-muted-foreground transition-colors hover:text-foreground flex items-center gap-1.5"
-          >
-            Resident Portal
-          </Link>
-          <Link
-            href="/admin"
-            className="text-muted-foreground transition-colors hover:text-foreground flex items-center gap-1.5"
-          >
-            <ShieldCheck className="size-4 text-primary" />
-            Admin Portal
-          </Link>
+
+          {/* Role-based navigation */}
+          {isAdmin ? (
+            <Link
+              href="/admin"
+              className="text-muted-foreground transition-colors hover:text-foreground flex items-center gap-1.5 font-medium"
+            >
+              <ShieldCheck className="size-4 text-primary" />
+              Admin Portal
+            </Link>
+          ) : (
+            <Link
+              href="/resident"
+              className="text-muted-foreground transition-colors hover:text-foreground flex items-center gap-1.5"
+            >
+              Resident Portal
+            </Link>
+          )}
         </nav>
 
         {/* Action Buttons */}
         <div className="hidden sm:flex items-center gap-2.5">
           <ThemeToggle />
           <Show when="signed-out">
-            <SignInButton mode="modal">
+            <SignInButton fallbackRedirectUrl="/auth-redirect">
               <Button variant="ghost" size="sm">
                 Sign In
               </Button>
             </SignInButton>
-            <SignUpButton mode="modal">
+            <SignUpButton fallbackRedirectUrl="/auth-redirect">
               <Button size="sm">
                 Sign Up
               </Button>
             </SignUpButton>
           </Show>
           <Show when="signed-in">
-            <Link href="/resident">
-              <Button variant="outline" size="sm">
-                Report Streetlight
-                <ArrowRight data-icon="inline-end" />
-              </Button>
-            </Link>
+            {isAdmin ? (
+              <Link href="/admin">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <ShieldCheck className="size-3.5 text-primary" />
+                  Admin Console
+                  <ArrowRight data-icon="inline-end" />
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/resident">
+                <Button variant="outline" size="sm">
+                  Report Streetlight
+                  <ArrowRight data-icon="inline-end" />
+                </Button>
+              </Link>
+            )}
             <UserButton />
           </Show>
         </div>
@@ -142,28 +179,35 @@ export function Navbar() {
             >
               Coverage
             </Link>
-            <Link
-              href="/resident"
-              onClick={() => setMobileMenuOpen(false)}
-              className="py-1.5 text-muted-foreground hover:text-foreground"
-            >
-              Resident Portal
-            </Link>
-            <Link
-              href="/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className="py-1.5 text-muted-foreground hover:text-foreground"
-            >
-              Admin Dashboard
-            </Link>
+
+            {/* Role-based mobile links */}
+            {isAdmin ? (
+              <Link
+                href="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-1.5 text-muted-foreground hover:text-foreground flex items-center gap-1.5 font-medium"
+              >
+                <ShieldCheck className="size-4 text-primary" />
+                Admin Dashboard
+              </Link>
+            ) : (
+              <Link
+                href="/resident"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-1.5 text-muted-foreground hover:text-foreground"
+              >
+                Resident Portal
+              </Link>
+            )}
+
             <div className="flex flex-col gap-2 pt-3 border-t">
               <Show when="signed-out">
-                <SignInButton mode="modal">
+                <SignInButton fallbackRedirectUrl="/auth-redirect">
                   <Button variant="outline" className="w-full">
                     Sign In
                   </Button>
                 </SignInButton>
-                <SignUpButton mode="modal">
+                <SignUpButton fallbackRedirectUrl="/auth-redirect">
                   <Button className="w-full">
                     Sign Up
                   </Button>
@@ -174,9 +218,15 @@ export function Navbar() {
                   <span className="text-xs text-muted-foreground">My Account</span>
                   <UserButton showName />
                 </div>
-                <Link href="/resident" onClick={() => setMobileMenuOpen(false)}>
-                  <Button className="w-full">Report Outage Now</Button>
-                </Link>
+                {isAdmin ? (
+                  <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full">Open Admin Console</Button>
+                  </Link>
+                ) : (
+                  <Link href="/resident" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full">Report Outage Now</Button>
+                  </Link>
+                )}
               </Show>
             </div>
           </nav>

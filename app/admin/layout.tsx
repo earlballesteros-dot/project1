@@ -1,29 +1,34 @@
-"use client";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getUserRole } from "@/lib/roles-server";
+import { AdminShell } from "@/components/admin-shell";
 
-import { useState } from "react";
-import { AdminSidebar } from "@/components/admin-sidebar";
-import { AdminHeader } from "@/components/admin-header";
+export const dynamic = "force-dynamic";
 
-export default function AdminLayout({
+/**
+ * Server-side route protection for the Admin section:
+ * - Signed-out users -> redirected to /sign-in
+ * - Residents (role !== "admin") -> blocked and redirected to /resident
+ * - Admin users (role = "admin") -> granted access to the Admin Dashboard
+ */
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { userId } = await auth();
 
-  return (
-    <div className="flex min-h-screen bg-background font-sans text-foreground">
-      {/* Sidebar for Desktop & Mobile */}
-      <AdminSidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+  // 1. Signed-out users must NOT access protected Admin pages
+  if (!userId) {
+    redirect("/sign-in");
+  }
 
-      {/* Main Administrative Content Area */}
-      <div className="flex flex-1 flex-col overflow-x-hidden">
-        <AdminHeader onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
-      </div>
-    </div>
-  );
+  // 2. Only role = "admin" can access Admin routes
+  const role = await getUserRole();
+  if (role !== "admin") {
+    // Block resident access and redirect to Resident Dashboard
+    redirect("/resident");
+  }
+
+  return <AdminShell>{children}</AdminShell>;
 }
