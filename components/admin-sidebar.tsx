@@ -41,10 +41,10 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     },
     {
       title: "Barangay Map & GIS",
-      href: "/admin#map",
+      href: "/admin/map",
       icon: MapPin,
-      active: false,
-      badge: "Soon",
+      active: pathname === "/admin/map",
+      badge: "Live",
     },
     {
       title: "Maintenance Teams",

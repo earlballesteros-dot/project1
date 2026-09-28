@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 const isAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 const isAuthRedirectRoute = createRouteMatcher(["/auth-redirect(.*)"]);
 const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
+const isResidentRoute = createRouteMatcher(["/resident(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
@@ -13,19 +14,24 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
 
-  // 2. If session claims explicitly identify a resident attempting to access /admin -> redirect to /resident
+  // 2. Signed-out users must NOT access protected Resident pages -> redirect to /sign-in
+  if (!userId && isResidentRoute(req)) {
+    return NextResponse.redirect(new URL("/sign-in", req.url));
+  }
+
+  // 3. If session claims explicitly identify a resident attempting to access /admin -> redirect to /resident
   if (userId && isAdminRoute(req)) {
     if (sessionClaims?.metadata?.role === "resident") {
       return NextResponse.redirect(new URL("/resident", req.url));
     }
   }
 
-  // 3. If already authenticated and visiting sign-in or sign-up, redirect to post-login dispatcher
+  // 4. If already authenticated and visiting sign-in or sign-up, redirect to post-login dispatcher
   if (userId && isAuthRoute(req)) {
     return NextResponse.redirect(new URL("/auth-redirect", req.url));
   }
 
-  // 4. If unauthenticated and visiting /auth-redirect, redirect to sign-in
+  // 5. If unauthenticated and visiting /auth-redirect, redirect to sign-in
   if (!userId && isAuthRedirectRoute(req)) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }

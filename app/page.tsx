@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   Lightbulb,
   ArrowRight,
-  ShieldCheck,
   AlertTriangle,
   MapPin,
   CheckCircle2,
@@ -62,7 +61,7 @@ export default function Home() {
                   Help illuminate and secure our communities. Quickly report broken fixtures, dark roads, or hazardous streetlight wires directly to the Butuan City Engineering Maintenance Division.
                 </p>
 
-                {/* Primary Action Buttons */}
+                {/* Primary Action Button */}
                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                   <Link href="/resident">
                     <Button size="lg" className="w-full sm:w-auto font-medium shadow-sm">
@@ -71,18 +70,12 @@ export default function Home() {
                       <ArrowRight data-icon="inline-end" />
                     </Button>
                   </Link>
-                  <Link href="/admin">
-                    <Button variant="outline" size="lg" className="w-full sm:w-auto">
-                      <ShieldCheck data-icon="inline-start" className="text-primary" />
-                      City Admin & Maintenance Console
-                    </Button>
-                  </Link>
                 </div>
 
                 {/* Key Metrics Pill */}
                 <div className="grid grid-cols-3 gap-4 pt-4 border-t w-full max-w-lg text-center sm:text-left">
                   <div>
-                    <span className="font-heading text-2xl font-bold text-foreground">86</span>
+                    <span className="font-heading text-2xl font-bold text-foreground">12</span>
                     <p className="text-xs text-muted-foreground">Barangays Covered</p>
                   </div>
                   <div>
