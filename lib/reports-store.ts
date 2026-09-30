@@ -16,7 +16,7 @@ export function getStoredReports(): StreetlightReport[] {
       return MOCK_REPORTS;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed;
     }
     return MOCK_REPORTS;

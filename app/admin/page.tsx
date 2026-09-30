@@ -16,6 +16,8 @@ import {
   Phone,
   MapPin,
   FileText,
+  BarChart3,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,8 +45,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { type StreetlightReport, type ReportStatus, MOCK_REPORTS } from "@/lib/mock-data";
+import {
+  type StreetlightReport,
+  type ReportStatus,
+  MOCK_REPORTS,
+  MOCK_BARANGAYS,
+} from "@/lib/mock-data";
 import { getStoredReports, updateReportStatus } from "@/lib/reports-store";
+import { BUTUAN_MAINTENANCE_TEAMS } from "@/components/admin-teams-client";
 
 export default function AdminDashboard() {
   const [reports, setReports] = useState<StreetlightReport[]>(MOCK_REPORTS);
@@ -77,6 +85,51 @@ export default function AdminDashboard() {
   const pendingCount = reports.filter((r) => r.status === "Pending").length;
   const inProgressCount = reports.filter((r) => r.status === "In Progress").length;
   const resolvedCount = reports.filter((r) => r.status === "Resolved").length;
+
+  const pendingPct = totalReportsCount > 0 ? Math.round((pendingCount / totalReportsCount) * 100) : 0;
+  const inProgressPct = totalReportsCount > 0 ? Math.round((inProgressCount / totalReportsCount) * 100) : 0;
+  const resolvedPct = totalReportsCount > 0 ? Math.round((resolvedCount / totalReportsCount) * 100) : 0;
+
+  // Breakdown across the 12 supported Butuan City barangays
+  const barangayBreakdown = MOCK_BARANGAYS.map((brgy) => {
+    const matching = reports.filter(
+      (r) => r.barangay.trim().toLowerCase() === brgy.trim().toLowerCase()
+    );
+    const count = matching.length;
+    const pending = matching.filter((r) => r.status === "Pending").length;
+    const underRepair = matching.filter((r) => r.status === "In Progress").length;
+    const resolved = matching.filter((r) => r.status === "Resolved").length;
+    const resolutionRate = count > 0 ? Math.round((resolved / count) * 100) : 0;
+
+    return {
+      name: brgy,
+      total: count,
+      pending,
+      underRepair,
+      resolved,
+      resolutionRate,
+    };
+  });
+
+  // Dynamic workload for the 4 maintenance teams based on active reports
+  const teamsWorkload = BUTUAN_MAINTENANCE_TEAMS.map((team) => {
+    const assignedReports = reports.filter((r) =>
+      r.assignedTeam?.toLowerCase().includes(team.keyword.toLowerCase())
+    );
+    const inProgressCount = assignedReports.filter((r) => r.status === "In Progress").length;
+    const pendingCount = assignedReports.filter((r) => r.status === "Pending").length;
+    const resolvedCount = assignedReports.filter((r) => r.status === "Resolved").length;
+    const activeWorkload = inProgressCount + pendingCount;
+    return {
+      ...team,
+      inProgressCount,
+      pendingCount,
+      resolvedCount,
+      activeWorkload,
+      statusText: inProgressCount > 0 ? "Dispatched" : activeWorkload > 0 ? "Staging" : "Standby",
+      availability: activeWorkload >= 2 ? "High Workload" : activeWorkload === 1 ? "Engaged" : "Available",
+    };
+  });
 
   const handleStatusChange = (id: string, newStatus: ReportStatus) => {
     const updated = updateReportStatus(id, newStatus);
@@ -142,75 +195,254 @@ export default function AdminDashboard() {
         </Badge>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div id="analytics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Total Incidents Logged
-            </CardTitle>
-            <ClipboardList className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-heading text-2xl font-bold">
-              {totalReportsCount}
+      {/* Analytics & Resolution Section */}
+      <div id="analytics" className="space-y-4">
+        {totalReportsCount === 0 ? (
+          <Card className="p-8 text-center border-dashed">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <BarChart3 className="size-5" />
+              </div>
+              <span className="text-base font-semibold text-foreground">
+                No reports available yet.
+              </span>
+              <p className="text-xs text-muted-foreground">
+                Analytics and resolution statistics will calculate automatically once incident reports are logged.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Synchronized with citizen reports
-            </p>
-          </CardContent>
-        </Card>
+          </Card>
+        ) : (
+          <>
+            {/* KPI Stats Cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Total Reports
+                  </CardTitle>
+                  <ClipboardList className="size-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-heading text-2xl font-bold">
+                    {totalReportsCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Synchronized with citizen reports
+                  </p>
+                </CardContent>
+              </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Pending Inspection
-            </CardTitle>
-            <AlertOctagon className="size-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-heading text-2xl font-bold text-destructive">
-              {pendingCount}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Awaiting linemen assessment
-            </p>
-          </CardContent>
-        </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Pending Reports
+                  </CardTitle>
+                  <AlertOctagon className="size-4 text-destructive" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-heading text-2xl font-bold text-destructive">
+                    {pendingCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Awaiting linemen assessment
+                  </p>
+                </CardContent>
+              </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Under Repair / Dispatched
-            </CardTitle>
-            <Clock className="size-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-heading text-2xl font-bold text-amber-600 dark:text-amber-400">
-              {inProgressCount}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Line crews actively assigned
-            </p>
-          </CardContent>
-        </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Under Repair Reports
+                  </CardTitle>
+                  <Clock className="size-4 text-amber-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-heading text-2xl font-bold text-amber-600 dark:text-amber-400">
+                    {inProgressCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Line crews actively assigned
+                  </p>
+                </CardContent>
+              </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Resolved This Month
-            </CardTitle>
-            <CheckCircle2 className="size-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-heading text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {resolvedCount}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Resolved Reports
+                  </CardTitle>
+                  <CheckCircle2 className="size-4 text-emerald-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="font-heading text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {resolvedCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Restored & operational
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Restored & operational
-            </p>
-          </CardContent>
-        </Card>
+
+            {/* Simple Breakdown by Status & Barangay */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              {/* Status Breakdown */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold">
+                    Status Breakdown
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Overall resolution progress across all recorded reports.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Progress bar */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Resolution Rate</span>
+                      <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                        {resolvedPct}%
+                      </span>
+                    </div>
+                    <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/60">
+                      <div className="bg-emerald-500 transition-all" style={{ width: `${resolvedPct}%` }} />
+                      <div className="bg-amber-500 transition-all" style={{ width: `${inProgressPct}%` }} />
+                      <div className="bg-destructive transition-all" style={{ width: `${pendingPct}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border divide-y text-xs">
+                    <div className="flex items-center justify-between p-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-destructive" />
+                        <span>Pending</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="destructive" className="text-[10px] py-0 px-1.5 font-mono">
+                          {pendingCount}
+                        </Badge>
+                        <span className="text-muted-foreground font-mono text-[11px] w-8 text-right">
+                          {pendingPct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-amber-500" />
+                        <span>Under Repair</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px] py-0 px-1.5 font-mono text-amber-700 dark:text-amber-300">
+                          {inProgressCount}
+                        </Badge>
+                        <span className="text-muted-foreground font-mono text-[11px] w-8 text-right">
+                          {inProgressPct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-emerald-500" />
+                        <span>Resolved</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+                          {resolvedCount}
+                        </Badge>
+                        <span className="text-muted-foreground font-mono text-[11px] w-8 text-right">
+                          {resolvedPct}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t py-2 text-[11px] text-muted-foreground">
+                  <Link href="/admin/analytics" className="text-primary hover:underline flex items-center gap-1">
+                    Open dedicated Analytics page &rarr;
+                  </Link>
+                </CardFooter>
+              </Card>
+
+              {/* Barangay Breakdown */}
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-semibold">
+                        Breakdown by Barangay
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Report volume across the 12 supported Butuan City barangays.
+                      </CardDescription>
+                    </div>
+                    <Link href="/admin/analytics">
+                      <Button variant="outline" size="xs" className="text-[11px]">
+                        Full Details
+                      </Button>
+                    </Link>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 max-h-[260px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="py-2 text-xs">Barangay</TableHead>
+                        <TableHead className="py-2 text-xs text-center">Total</TableHead>
+                        <TableHead className="py-2 text-xs text-center">Pending</TableHead>
+                        <TableHead className="py-2 text-xs text-center">Under Repair</TableHead>
+                        <TableHead className="py-2 text-xs text-center">Resolved</TableHead>
+                        <TableHead className="py-2 text-xs text-right">Resolution</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {barangayBreakdown.map((b) => (
+                        <TableRow key={b.name} className="hover:bg-muted/40 text-xs">
+                          <TableCell className="py-1.5 font-medium">{b.name}</TableCell>
+                          <TableCell className="py-1.5 text-center font-mono font-semibold">
+                            {b.total > 0 ? b.total : <span className="text-muted-foreground/40 font-normal">0</span>}
+                          </TableCell>
+                          <TableCell className="py-1.5 text-center">
+                            {b.pending > 0 ? (
+                              <Badge variant="destructive" className="text-[10px] py-0 px-1 font-mono">
+                                {b.pending}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground/40 font-mono">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-1.5 text-center">
+                            {b.underRepair > 0 ? (
+                              <Badge variant="secondary" className="text-[10px] py-0 px-1 font-mono text-amber-700 dark:text-amber-300">
+                                {b.underRepair}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground/40 font-mono">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-1.5 text-center">
+                            {b.resolved > 0 ? (
+                              <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+                                {b.resolved}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground/40 font-mono">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-1.5 text-right font-mono">
+                            {b.total > 0 ? `${b.resolutionRate}%` : <span className="text-muted-foreground/40">-</span>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main Streetlight Incident Table */}
@@ -389,6 +621,100 @@ export default function AdminDashboard() {
           <span className="text-xs text-muted-foreground">
             Synchronized with resident reporting portal via local store.
           </span>
+        </CardFooter>
+      </Card>
+
+      {/* Maintenance Teams Overview */}
+      <Card id="crews">
+        <CardHeader className="border-b">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg">Maintenance Teams</CardTitle>
+                <Badge variant="outline" className="text-xs">
+                  4 Active Units
+                </Badge>
+              </div>
+              <CardDescription className="text-xs">
+                City Engineering & linemen crews assigned across Butuan City districts.
+              </CardDescription>
+            </div>
+            <Link href="/admin/crews">
+              <Button variant="outline" size="sm" className="text-xs">
+                Open Dedicated Teams Page &rarr;
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team Name</TableHead>
+                <TableHead>Assigned Barangay / Area</TableHead>
+                <TableHead className="text-center">Current Workload</TableHead>
+                <TableHead className="text-center">Team Status</TableHead>
+                <TableHead className="text-right">Availability</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teamsWorkload.map((t) => (
+                <TableRow key={t.id} className="hover:bg-muted/40">
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                        <Users className="size-3.5 text-primary shrink-0" />
+                        {t.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        Lead: {t.lead} • {t.vehicle}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1 max-w-[260px]">
+                      {t.assignedBarangays.map((b) => (
+                        <Badge key={b} variant="secondary" className="text-[10px] py-0 px-1.5">
+                          {b}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs">
+                    <span className="font-bold">{t.activeWorkload} Active</span>
+                    <span className="text-[10px] text-muted-foreground block">
+                      {t.inProgressCount} in progress, {t.pendingCount} pending
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={t.inProgressCount > 0 ? "secondary" : "outline"} className="text-[11px]">
+                      {t.statusText}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Badge
+                      variant="outline"
+                      className={`text-[11px] ${
+                        t.activeWorkload === 0
+                          ? "border-emerald-500/50 text-emerald-600 dark:text-emerald-400"
+                          : t.activeWorkload === 1
+                          ? "border-blue-500/50 text-blue-600 dark:text-blue-400"
+                          : "border-amber-500/50 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {t.availability}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+        <CardFooter className="border-t py-3 text-xs text-muted-foreground flex items-center justify-between">
+          <span>Workload derived from active streetlight incident reports</span>
+          <Link href="/admin/crews" className="text-primary hover:underline text-xs">
+            View full crew roster & dispatch details &rarr;
+          </Link>
         </CardFooter>
       </Card>
 
