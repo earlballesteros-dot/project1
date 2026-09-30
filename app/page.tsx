@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  Lightbulb,
   ArrowRight,
   AlertTriangle,
   MapPin,
@@ -22,9 +21,12 @@ import {
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { Beams } from "@/components/beams";
+import { HeroAction } from "@/components/hero-action";
+import { isAdmin } from "@/lib/roles-server";
 import { MOCK_BARANGAYS, MOCK_STATS } from "@/lib/mock-data";
 
-export default function Home() {
+export default async function Home() {
+  const admin = await isAdmin();
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans text-foreground">
       <Navbar />
@@ -62,15 +64,7 @@ export default function Home() {
                 </p>
 
                 {/* Primary Action Button */}
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                  <Link href="/resident">
-                    <Button size="lg" className="w-full sm:w-auto font-medium shadow-sm">
-                      <Lightbulb data-icon="inline-start" className="text-amber-300" />
-                      Report Streetlight (Resident Portal)
-                      <ArrowRight data-icon="inline-end" />
-                    </Button>
-                  </Link>
-                </div>
+                <HeroAction initialIsAdmin={admin} />
 
                 {/* Key Metrics Pill */}
                 <div className="grid grid-cols-3 gap-4 pt-4 border-t w-full max-w-lg text-center sm:text-left">
@@ -231,12 +225,14 @@ export default function Home() {
                   Active monitoring across urban centers, highway corridors, and residential puroks.
                 </p>
               </div>
-              <Link href="/resident">
-                <Button variant="outline" size="sm">
-                  Check Your Barangay
-                  <ArrowRight data-icon="inline-end" />
-                </Button>
-              </Link>
+              {!admin && (
+                <Link href="/resident">
+                  <Button variant="outline" size="sm">
+                    Check Your Barangay
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                </Link>
+              )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">

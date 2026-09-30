@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import { BUTUAN_COORDINATES, DEFAULT_ZOOM } from "@/components/barangay-map";
 import type { Map as LeafletMap } from "leaflet";
+import { useIsAdmin } from "@/lib/roles";
 
 // Dynamically import BarangayMap to prevent server-side execution
 const BarangayMap = dynamic(() => import("@/components/barangay-map"), {
@@ -66,6 +67,7 @@ const BUTUAN_DISTRICTS = [
 ];
 
 export function AdminMapClient() {
+  const isAdmin = useIsAdmin();
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [activeDistrict, setActiveDistrict] = useState<string>("City Proper / Plaza Rizal");
 
@@ -121,12 +123,14 @@ export function AdminMapClient() {
             <Crosshair className="size-3.5 text-primary" />
             Recenter City
           </Button>
-          <Link href="/resident">
-            <Button variant="secondary" size="sm" className="text-xs">
-              Switch to Resident Portal
-              <ExternalLink data-icon="inline-end" />
-            </Button>
-          </Link>
+          {!isAdmin && (
+            <Link href="/resident">
+              <Button variant="secondary" size="sm" className="text-xs">
+                Switch to Resident Portal
+                <ExternalLink data-icon="inline-end" />
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -164,7 +168,7 @@ export function AdminMapClient() {
                 </Badge>
               </div>
               <CardDescription className="text-xs mt-0.5">
-                Navigate across all 86 barangays, highway corridors, bridges, and the Agusan River basin.
+                Navigate across the 12 selected barangays, highway corridors, bridges, and the Agusan River basin.
               </CardDescription>
             </div>
 
@@ -173,7 +177,7 @@ export function AdminMapClient() {
                 8.9492° N, 125.5436° E
               </Badge>
               <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                86 Barangays Covered
+                12 Barangays Covered
               </Badge>
             </div>
           </div>

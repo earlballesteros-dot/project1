@@ -53,14 +53,17 @@ import {
 } from "@/lib/mock-data";
 import { getStoredReports, updateReportStatus } from "@/lib/reports-store";
 import { BUTUAN_MAINTENANCE_TEAMS } from "@/components/admin-teams-client";
+import { useIsAdmin } from "@/lib/roles";
 
 export default function AdminDashboard() {
+  const isAdmin = useIsAdmin();
   const [reports, setReports] = useState<StreetlightReport[]>(MOCK_REPORTS);
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [selectedReport, setSelectedReport] = useState<StreetlightReport | null>(null);
 
   // Synchronize reports with local storage
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReports(getStoredReports());
 
     const handleStorageChange = () => {
@@ -168,12 +171,14 @@ export default function AdminDashboard() {
             <Download data-icon="inline-start" />
             Export Log (CSV)
           </Button>
-          <Link href="/resident">
-            <Button variant="secondary" size="sm" className="text-xs">
-              Switch to Resident Portal
-              <ExternalLink data-icon="inline-end" />
-            </Button>
-          </Link>
+          {!isAdmin && (
+            <Link href="/resident">
+              <Button variant="secondary" size="sm" className="text-xs">
+                Switch to Resident Portal
+                <ExternalLink data-icon="inline-end" />
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 

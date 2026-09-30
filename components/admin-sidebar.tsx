@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useIsAdmin } from "@/lib/roles";
 
 interface AdminSidebarProps {
   isOpen?: boolean;
@@ -23,6 +24,7 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
+  const isAdmin = useIsAdmin();
 
   const navItems = [
     {
@@ -60,9 +62,9 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     },
     {
       title: "System Settings",
-      href: "/admin#settings",
+      href: "/admin/settings",
       icon: Settings,
-      active: false,
+      active: pathname === "/admin/settings",
     },
   ];
 
@@ -108,7 +110,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                 Monitoring Active
               </span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                86 Brgys
+                12 Brgys
               </Badge>
             </div>
             <p className="text-muted-foreground text-[11px]">
@@ -161,13 +163,15 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-2">
               Cross Navigation
             </span>
-            <Link
-              href="/resident"
-              className="flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <span>Resident Portal View</span>
-              <ChevronRight className="size-3.5" />
-            </Link>
+            {!isAdmin && (
+              <Link
+                href="/resident"
+                className="flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <span>Resident Portal View</span>
+                <ChevronRight className="size-3.5" />
+              </Link>
+            )}
             <Link
               href="/"
               className="flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
