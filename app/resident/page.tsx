@@ -49,6 +49,7 @@ import {
   type StreetlightReport,
 } from "@/lib/mock-data";
 import { getStoredReports, saveReport } from "@/lib/reports-store";
+import { supabase } from "@/lib/supabase";
 
 const PROBLEM_TYPES = [
   "Total Outage / Unlit Street",
@@ -131,7 +132,7 @@ export default function ResidentProblemReportingPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       !reporterName.trim() ||
@@ -145,14 +146,100 @@ export default function ResidentProblemReportingPage() {
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const generatedId = `BXU-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    try {
+      // 1. Determine priority and status matching existing behavior
+      const priority =
+        problemType.toLowerCase().includes("wire") ||
+          problemType.toLowerCase().includes("hazard")
+          ? "Emergency"
+          : "High";
+      const status = "Pending";
+
+      // 2. Upload photo to private Supabase Storage bucket 'report-photos' if selected
+      let uploadedPhotoPath: string | null = null;
+      if (photoFile) {
+        try {
+          const cleanFileName = photoFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const uniqueId =
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : Math.random().toString(36).substring(2);
+          const storagePath = `reports/${uniqueId}-${cleanFileName}`;
+
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from("report-photos")
+            .upload(storagePath, photoFile, {
+              contentType: photoFile.type,
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error("Photo upload failed:", uploadError.message);
+            alert(`Photo upload failed: ${uploadError.message}. Please try again.`);
+            setIsSubmitting(false);
+            return;
+          }
+
+          uploadedPhotoPath = uploadData?.path || storagePath;
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error ? err.message : "Unexpected error during photo upload";
+          console.error("Photo upload failed:", message);
+          alert(`Photo upload failed: ${message}. Please try again.`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 3. Find matching row in `barangays` by name to get its `id` as `barangay_id`
+      let barangayId: string | null = null;
+      try {
+        const { data: barangayData, error: barangayError } = await supabase
+          .from("barangays")
+          .select("id")
+          .ilike("name", barangay.trim())
+          .maybeSingle();
+
+        if (barangayError) {
+          console.error("Error looking up barangay from Supabase:", barangayError.message);
+        } else if (barangayData) {
+          barangayId = barangayData.id;
+        }
+      } catch (err) {
+        console.error("Failed to query barangays table:", err);
+      }
+
+      // 4. Insert new row into `public.reports` with mapped fields
+      try {
+        const { error: insertError } = await supabase.from("reports").insert({
+          reporter_name: reporterName.trim(),
+          contact_info: contactInfo.trim(),
+          barangay_id: barangayId,
+          street_purok_landmark: streetLandmark.trim(),
+          pole_tag_id: poleNumber.trim() || null,
+          problem_type: problemType,
+          description_hazard: problemDescription.trim(),
+          priority: priority,
+          status: status,
+          assigned_team_id: null,
+          photo_url: uploadedPhotoPath ?? null,
+        });
+
+        if (insertError) {
+          console.error("Error inserting report into Supabase:", insertError.message);
+        }
+      } catch (err) {
+        console.error("Failed to insert report into Supabase:", err);
+      }
+
+      // 4. Generate local display ticket ID and format timestamps
       const now = new Date();
       const dateString = now.toISOString().split("T")[0];
       const timeString = now.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       });
+      const generatedId = `BXU-${now.getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
       const newSubmitted = {
         id: generatedId,
@@ -169,7 +256,7 @@ export default function ResidentProblemReportingPage() {
 
       setSubmittedTicket(newSubmitted);
 
-      // Add to interactive reports table and persist in local storage
+      // 5. Add to interactive reports table and persist in local storage
       const newReportItem: StreetlightReport = {
         id: generatedId,
         barangay,
@@ -181,19 +268,16 @@ export default function ResidentProblemReportingPage() {
         photoUrl: photoPreview || undefined,
         reportedDate: dateString,
         status: "Pending",
-        priority:
-          problemType.toLowerCase().includes("wire") ||
-          problemType.toLowerCase().includes("hazard")
-            ? "Emergency"
-            : "High",
+        priority,
         assignedTeam: "Pending Dispatch",
         residentName: reporterName,
       };
 
       const updated = saveReport(newReportItem);
       setReportsList(updated);
+    } finally {
       setIsSubmitting(false);
-    }, 350);
+    }
   };
 
   const handleResetForm = () => {
@@ -836,8 +920,8 @@ export default function ResidentProblemReportingPage() {
                           report.status === "Resolved"
                             ? "outline"
                             : report.status === "In Progress"
-                            ? "secondary"
-                            : "destructive"
+                              ? "secondary"
+                              : "destructive"
                         }
                         className="text-[11px]"
                       >

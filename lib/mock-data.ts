@@ -118,6 +118,20 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     assignedTeam: "Team Alpha (City Engineering)",
     residentName: "Liza Mae Ocampo",
   },
+  {
+    id: "BXU-2026-0073",
+    barangay: "Holy Redeemer",
+    landmark: "Purok 4 near Parish Church & Covered Court",
+    poleNumber: "BXU-HR-019",
+    issueType: "Total Outage / Unlit Pole",
+    description: "Streetlight fixture completely unlit for 3 days, causing dangerous dark area near school crossing.",
+    contactInfo: "0919 444 3322",
+    reportedDate: "2026-09-18",
+    status: "In Progress",
+    priority: "High",
+    assignedTeam: "Team Bravo (Linemen)",
+    residentName: "Maria Santos",
+  },
 ];
 
 export const MOCK_RESIDENT_REPORTS: StreetlightReport[] = [

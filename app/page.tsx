@@ -22,8 +22,9 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { Beams } from "@/components/beams";
 import { HeroAction } from "@/components/hero-action";
+import { HeroLiveMetrics, HeroLiveCard } from "@/components/hero-live-status";
 import { isAdmin } from "@/lib/roles-server";
-import { MOCK_BARANGAYS, MOCK_STATS } from "@/lib/mock-data";
+import { MOCK_BARANGAYS } from "@/lib/mock-data";
 
 export default async function Home() {
   const admin = await isAdmin();
@@ -67,80 +68,12 @@ export default async function Home() {
                 <HeroAction initialIsAdmin={admin} />
 
                 {/* Key Metrics Pill */}
-                <div className="grid grid-cols-3 gap-4 pt-4 border-t w-full max-w-lg text-center sm:text-left">
-                  <div>
-                    <span className="font-heading text-2xl font-bold text-foreground">12</span>
-                    <p className="text-xs text-muted-foreground">Barangays Covered</p>
-                  </div>
-                  <div>
-                    <span className="font-heading text-2xl font-bold text-foreground">
-                      {MOCK_STATS.resolvedThisMonth}+
-                    </span>
-                    <p className="text-xs text-muted-foreground">Repaired This Month</p>
-                  </div>
-                  <div>
-                    <span className="font-heading text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {MOCK_STATS.averageResolutionHours} hrs
-                    </span>
-                    <p className="text-xs text-muted-foreground">Avg. Response Time</p>
-                  </div>
-                </div>
+                <HeroLiveMetrics />
               </div>
 
-              {/* Hero Visual Card / Live Status Mock Preview */}
+              {/* Hero Visual Card / Live Status Snapshot */}
               <div className="lg:col-span-5">
-                <Card id="live-status" className="border-border shadow-lg">
-                  <CardHeader className="border-b bg-muted/30 pb-4">
-                    <div className="flex items-center justify-between">
-                      <Badge variant="secondary" className="gap-1.5 text-xs font-medium">
-                        <Activity className="size-3 text-emerald-500 animate-pulse" />
-                        Live City Dispatch Snapshot
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">Updated Today</span>
-                    </div>
-                    <CardTitle className="pt-2 text-base">Butuan Central Monitoring</CardTitle>
-                    <CardDescription>
-                      Real-time status of public streetlights under active inspection.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-3 pt-4">
-                    <div className="flex items-start justify-between rounded-lg border p-3 bg-card">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold text-sm">Brgy. Libertad (J.C. Aquino Ave)</span>
-                        <span className="text-xs text-muted-foreground">Pole #BXU-LIB-048 • Total Outage</span>
-                      </div>
-                      <Badge variant="destructive" className="text-[10px]">
-                        Pending
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-start justify-between rounded-lg border p-3 bg-card">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold text-sm">Brgy. Ampayon (Near CSU)</span>
-                        <span className="text-xs text-muted-foreground">Pole #BXU-AMP-112 • Flickering</span>
-                      </div>
-                      <Badge variant="secondary" className="text-[10px]">
-                        In Progress
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-start justify-between rounded-lg border p-3 bg-card">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold text-sm">Brgy. Bancasi (Airport Bypass)</span>
-                        <span className="text-xs text-muted-foreground">Pole #BXU-BAN-019 • Day Burning</span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                        Resolved
-                      </Badge>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex items-center justify-between border-t bg-muted/20 text-xs text-muted-foreground py-3">
-                    <span>Active Dispatches: 26</span>
-                    <Link href="/admin#reports" className="font-medium text-primary hover:underline">
-                      View full dispatch table &rarr;
-                    </Link>
-                  </CardFooter>
-                </Card>
+                <HeroLiveCard />
               </div>
             </div>
           </div>

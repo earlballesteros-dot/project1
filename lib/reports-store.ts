@@ -4,6 +4,8 @@ const STORAGE_KEY = "butuan_streetlight_incident_reports";
 
 /**
  * Retrieve all reports from localStorage (falls back to MOCK_REPORTS).
+ * Merges any baseline mock reports that are missing so newly added defaults
+ * (like the Holy Redeemer report) are seamlessly available.
  */
 export function getStoredReports(): StreetlightReport[] {
   if (typeof window === "undefined") {
@@ -16,7 +18,14 @@ export function getStoredReports(): StreetlightReport[] {
       return MOCK_REPORTS;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const existingIds = new Set(parsed.map((r: StreetlightReport) => r.id));
+      const missingMockReports = MOCK_REPORTS.filter((r) => !existingIds.has(r.id));
+      if (missingMockReports.length > 0) {
+        const combined = [...parsed, ...missingMockReports];
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
+        return combined;
+      }
       return parsed;
     }
     return MOCK_REPORTS;
@@ -27,6 +36,22 @@ export function getStoredReports(): StreetlightReport[] {
 }
 
 /**
+ * Persist the entire reports list to localStorage and trigger change events.
+ */
+export function saveStoredReports(reports: StreetlightReport[]): StreetlightReport[] {
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+      window.dispatchEvent(new Event("butuan-reports-changed"));
+      window.dispatchEvent(new Event("storage"));
+    } catch (e) {
+      console.error("Error saving reports to localStorage:", e);
+    }
+  }
+  return reports;
+}
+
+/**
  * Save a newly submitted resident report into local storage.
  * New reports are prepended to the top of the list.
  */
@@ -34,18 +59,7 @@ export function saveReport(newReport: StreetlightReport): StreetlightReport[] {
   const current = getStoredReports();
   // Ensure the new report is placed at index 0 and avoids duplicates
   const updated = [newReport, ...current.filter((r) => r.id !== newReport.id)];
-
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      // Dispatch custom event to notify open components/tabs
-      window.dispatchEvent(new Event("butuan-reports-changed"));
-    } catch (e) {
-      console.error("Error saving report to localStorage:", e);
-    }
-  }
-
-  return updated;
+  return saveStoredReports(updated);
 }
 
 /**
@@ -68,14 +82,26 @@ export function updateReportStatus(
     return r;
   });
 
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      window.dispatchEvent(new Event("butuan-reports-changed"));
-    } catch (e) {
-      console.error("Error updating report in localStorage:", e);
-    }
-  }
+  return saveStoredReports(updated);
+}
 
-  return updated;
+/**
+ * Update the assigned maintenance crew of an existing incident report.
+ */
+export function updateReportAssignedTeam(
+  id: string,
+  assignedTeam: string
+): StreetlightReport[] {
+  const current = getStoredReports();
+  const updated = current.map((r) => {
+    if (r.id === id) {
+      return {
+        ...r,
+        assignedTeam,
+      };
+    }
+    return r;
+  });
+
+  return saveStoredReports(updated);
 }
