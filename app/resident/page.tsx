@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Sparkles,
   Camera,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,11 +46,16 @@ import {
 } from "@/components/ui/table";
 import {
   MOCK_RESIDENT_REPORTS,
-  MOCK_BARANGAYS,
   type StreetlightReport,
 } from "@/lib/mock-data";
 import { getStoredReports, saveReport } from "@/lib/reports-store";
 import { supabase } from "@/lib/supabase";
+
+interface DbBarangay {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
 
 const PROBLEM_TYPES = [
   "Total Outage / Unlit Street",
@@ -73,6 +79,11 @@ export default function ResidentProblemReportingPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Dynamic barangays from Supabase
+  const [barangaysList, setBarangaysList] = useState<DbBarangay[]>([]);
+  const [isLoadingBarangays, setIsLoadingBarangays] = useState(true);
+  const [barangaysError, setBarangaysError] = useState<string | null>(null);
 
   // Submitted ticket confirmation state
   const [submittedTicket, setSubmittedTicket] = useState<{
@@ -104,6 +115,56 @@ export default function ResidentProblemReportingPage() {
     return () => {
       window.removeEventListener("butuan-reports-changed", handleStorageChange);
       window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  // Retrieve active barangays alphabetically from public.barangays Supabase table
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchBarangays() {
+      setIsLoadingBarangays(true);
+      setBarangaysError(null);
+
+      try {
+        const { data, error } = await supabase
+          .from("barangays")
+          .select("id, name, is_active")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error("Error fetching barangays from Supabase:", error.message);
+          setBarangaysError("Failed to load barangays. Please refresh.");
+        } else if (data) {
+          setBarangaysList(data);
+          // Preserve selected barangay if valid, otherwise fallback to "Libertad" or first entry
+          setBarangay((prev) => {
+            if (prev && data.some((b) => b.name === prev)) {
+              return prev;
+            }
+            const defaultItem = data.find((b) => b.name === "Libertad") || data[0];
+            return defaultItem ? defaultItem.name : "";
+          });
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        const msg = err instanceof Error ? err.message : "Error fetching barangays";
+        console.error("Failed to query barangays:", msg);
+        setBarangaysError("Failed to load barangays. Please refresh.");
+      } finally {
+        if (isMounted) {
+          setIsLoadingBarangays(false);
+        }
+      }
+    }
+
+    fetchBarangays();
+
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -193,20 +254,28 @@ export default function ResidentProblemReportingPage() {
 
       // 3. Find matching row in `barangays` by name to get its `id` as `barangay_id`
       let barangayId: string | null = null;
-      try {
-        const { data: barangayData, error: barangayError } = await supabase
-          .from("barangays")
-          .select("id")
-          .ilike("name", barangay.trim())
-          .maybeSingle();
+      const matchedFromList = barangaysList.find(
+        (b) => b.name.toLowerCase() === barangay.trim().toLowerCase()
+      );
 
-        if (barangayError) {
-          console.error("Error looking up barangay from Supabase:", barangayError.message);
-        } else if (barangayData) {
-          barangayId = barangayData.id;
+      if (matchedFromList) {
+        barangayId = matchedFromList.id;
+      } else {
+        try {
+          const { data: barangayData, error: barangayError } = await supabase
+            .from("barangays")
+            .select("id")
+            .ilike("name", barangay.trim())
+            .maybeSingle();
+
+          if (barangayError) {
+            console.error("Error looking up barangay from Supabase:", barangayError.message);
+          } else if (barangayData) {
+            barangayId = barangayData.id;
+          }
+        } catch (err) {
+          console.error("Failed to query barangays table:", err);
         }
-      } catch (err) {
-        console.error("Failed to query barangays table:", err);
       }
 
       // 4. Insert new row into `public.reports` with mapped fields
@@ -511,22 +580,46 @@ export default function ResidentProblemReportingPage() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="barangay">
-                          Barangay <span className="text-destructive">*</span>
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="barangay">
+                            Barangay <span className="text-destructive">*</span>
+                          </Label>
+                          {isLoadingBarangays && (
+                            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <Loader2 className="size-3 animate-spin text-primary" />
+                              Loading...
+                            </span>
+                          )}
+                        </div>
                         <select
                           id="barangay"
                           value={barangay}
                           onChange={(e) => setBarangay(e.target.value)}
+                          disabled={isLoadingBarangays || (barangaysList.length === 0 && !isLoadingBarangays)}
                           className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
                           required
                         >
-                          {MOCK_BARANGAYS.map((b) => (
-                            <option key={b} value={b} className="text-foreground bg-background">
-                              Brgy. {b}
+                          {isLoadingBarangays ? (
+                            <option value="" disabled className="text-muted-foreground bg-background">
+                              Loading barangays...
                             </option>
-                          ))}
+                          ) : barangaysError && barangaysList.length === 0 ? (
+                            <option value="" disabled className="text-muted-foreground bg-background">
+                              Failed to load barangays
+                            </option>
+                          ) : (
+                            barangaysList.map((b) => (
+                              <option key={b.id} value={b.name} className="text-foreground bg-background">
+                                Brgy. {b.name}
+                              </option>
+                            ))
+                          )}
                         </select>
+                        {barangaysError && (
+                          <p className="text-xs text-destructive">
+                            {barangaysError}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-1.5">
