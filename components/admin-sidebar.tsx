@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useIsAdmin } from "@/lib/roles";
+import { supabase } from "@/lib/supabase";
 
 interface AdminSidebarProps {
   isOpen?: boolean;
@@ -25,6 +27,30 @@ interface AdminSidebarProps {
 export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
   const isAdmin = useIsAdmin();
+  const [activeBarangaysCount, setActiveBarangaysCount] = useState<number>(86);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchBarangaysCount() {
+      try {
+        const { count, error } = await supabase
+          .from("barangays")
+          .select("*", { count: "exact", head: true })
+          .eq("is_active", true);
+
+        if (!error && count !== null && isMounted) {
+          setActiveBarangaysCount(count);
+        }
+      } catch (err) {
+        console.error("Failed to query active barangays count in sidebar:", err);
+      }
+    }
+
+    fetchBarangaysCount();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const navItems = [
     {
@@ -36,9 +62,9 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     },
     {
       title: "All Incident Reports",
-      href: "/admin#reports",
+      href: "/admin/reports",
       icon: ClipboardList,
-      active: false,
+      active: pathname === "/admin/reports",
       badge: "6 New",
     },
     {
@@ -50,15 +76,15 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     },
     {
       title: "Maintenance Teams",
-      href: "/admin#crews",
+      href: "/admin/teams",
       icon: Users,
-      active: false,
+      active: pathname === "/admin/teams" || pathname === "/admin/crews",
     },
     {
       title: "Analytics & Resolution",
-      href: "/admin#analytics",
+      href: "/admin/analytics",
       icon: BarChart3,
-      active: false,
+      active: pathname === "/admin/analytics",
     },
     {
       title: "System Settings",
@@ -110,7 +136,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                 Monitoring Active
               </span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                12 Brgys
+                {activeBarangaysCount} Brgys
               </Badge>
             </div>
             <p className="text-muted-foreground text-[11px]">

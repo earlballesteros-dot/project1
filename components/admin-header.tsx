@@ -317,11 +317,11 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
               {/* Footer */}
               <div className="border-t p-2.5 bg-muted/20 text-center">
                 <Link
-                  href="/admin#reports"
+                  href="/admin/reports"
                   onClick={() => setIsOpen(false)}
                   className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium"
                 >
-                  View All Reports in Operations Dashboard
+                  View All Reports in Incident Queue
                   <ChevronRight className="size-3" />
                 </Link>
               </div>

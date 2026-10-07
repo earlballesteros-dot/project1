@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -76,47 +76,36 @@ export function AdminTeamsClient() {
   const [isLoadingBarangays, setIsLoadingBarangays] = useState(true);
 
   // Load active barangays from public.barangays
-  useEffect(() => {
-    let isMounted = true;
+  const fetchActiveBarangays = useCallback(async () => {
+    setIsLoadingBarangays(true);
+    try {
+      const { data, error } = await supabase
+        .from("barangays")
+        .select("name, is_active")
+        .eq("is_active", true)
+        .order("name", { ascending: true });
 
-    async function fetchActiveBarangays() {
-      setIsLoadingBarangays(true);
-      try {
-        const { data, error } = await supabase
-          .from("barangays")
-          .select("name, is_active")
-          .eq("is_active", true)
-          .order("name", { ascending: true });
-
-        if (!isMounted) return;
-
-        if (error) {
-          console.error("Error fetching barangays for maintenance teams:", error.message);
-          setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
-        } else if (data && data.length > 0) {
-          setAvailableBarangays(data.map((b) => b.name));
-        } else {
-          setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
-        }
-      } catch (err) {
-        if (!isMounted) return;
-        console.error("Failed to query barangays:", err);
+      if (error) {
+        console.error("Error fetching barangays for maintenance teams:", error.message);
         setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
-      } finally {
-        if (isMounted) {
-          setIsLoadingBarangays(false);
-        }
+      } else if (data && data.length > 0) {
+        setAvailableBarangays(data.map((b) => b.name));
+      } else {
+        setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
       }
+    } catch (err) {
+      console.error("Failed to query barangays:", err);
+      setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
+    } finally {
+      setIsLoadingBarangays(false);
     }
-
-    fetchActiveBarangays();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
-  // Synchronize reports and teams with localStorage stores
+  useEffect(() => {
+    fetchActiveBarangays();
+  }, [fetchActiveBarangays]);
+
+  // Synchronize reports, teams, and barangays with system events
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setReports(getStoredReports());
@@ -131,26 +120,35 @@ export function AdminTeamsClient() {
       setTeams(getStoredTeams());
     };
 
+    const handleBarangaysChange = () => {
+      fetchActiveBarangays();
+    };
+
     window.addEventListener("butuan-reports-changed", handleReportsChange);
     window.addEventListener("butuan-teams-changed", handleTeamsChange);
+    window.addEventListener("butuan-barangays-changed", handleBarangaysChange);
     window.addEventListener("storage", () => {
       handleReportsChange();
       handleTeamsChange();
+      handleBarangaysChange();
     });
 
     return () => {
       window.removeEventListener("butuan-reports-changed", handleReportsChange);
       window.removeEventListener("butuan-teams-changed", handleTeamsChange);
+      window.removeEventListener("butuan-barangays-changed", handleBarangaysChange);
       window.removeEventListener("storage", () => {
         handleReportsChange();
         handleTeamsChange();
+        handleBarangaysChange();
       });
     };
-  }, []);
+  }, [fetchActiveBarangays]);
 
   const handleRefresh = () => {
     setReports(getStoredReports());
     setTeams(getStoredTeams());
+    fetchActiveBarangays();
   };
 
   // Derive workload for each maintenance team dynamically from current reports
@@ -456,7 +454,9 @@ export function AdminTeamsClient() {
               </CardDescription>
             </div>
             <Badge variant="outline" className="text-xs font-mono self-start sm:self-auto">
-              12 Supported Barangays
+              {isLoadingBarangays
+                ? "Loading..."
+                : `${availableBarangays.length} Supported Barangays`}
             </Badge>
           </div>
         </CardHeader>
@@ -515,7 +515,7 @@ export function AdminTeamsClient() {
                     </div>
                   </TableCell>
 
-                  {/* Assigned Barangays (12 Supported Barangays) */}
+                  {/* Assigned Barangays */}
                   <TableCell>
                     <div className="flex flex-col gap-1 max-w-[260px]">
                       {t.assignedBarangays.length > 0 ? (
@@ -767,7 +767,7 @@ export function AdminTeamsClient() {
 
               <CardFooter className="border-t pt-3 pb-3 flex items-center justify-between">
                 <span className="text-[11px] text-muted-foreground">
-                  {team.assignedBarangays.length} of 12 Barangays Assigned
+                  {team.assignedBarangays.length} of {availableBarangays.length} Barangays Assigned
                 </span>
                 <Button
                   variant="outline"

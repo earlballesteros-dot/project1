@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   Settings,
@@ -20,6 +20,12 @@ import {
   Check,
   Building2,
   Volume2,
+  Plus,
+  Pencil,
+  Archive,
+  AlertTriangle,
+  AlertCircle,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +37,22 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -43,15 +65,51 @@ import {
   SUPPORTED_BARANGAYS_12,
   type SystemSettings,
 } from "@/lib/settings-store";
-import { BUTUAN_MAINTENANCE_TEAMS } from "@/lib/teams-data";
+import { getStoredTeams } from "@/lib/teams-data";
+import { useAuth } from "@clerk/nextjs";
 import { useIsAdmin } from "@/lib/roles";
+import { createClerkSupabaseClient, supabase as defaultSupabase } from "@/lib/supabase";
+
+interface BarangayRecord {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
 
 export function AdminSettingsClient() {
   const isAdmin = useIsAdmin();
+  const { getToken } = useAuth();
+  const supabase = useMemo(() => {
+    return getToken ? createClerkSupabaseClient(getToken) : defaultSupabase;
+  }, [getToken]);
+
   const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [savedNotice, setSavedNotice] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+
+  // Barangay Management state
+  const [barangays, setBarangays] = useState<BarangayRecord[]>([]);
+  const [isLoadingBarangays, setIsLoadingBarangays] = useState<boolean>(true);
+  const [barangaysError, setBarangaysError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
+
+  // Dialog and form states
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [newBarangayName, setNewBarangayName] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const [editingBarangay, setEditingBarangay] = useState<BarangayRecord | null>(null);
+  const [editBarangayName, setEditBarangayName] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [archivingBarangay, setArchivingBarangay] = useState<BarangayRecord | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [barangayNotice, setBarangayNotice] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Synchronize settings from local storage on mount
   useEffect(() => {
@@ -59,6 +117,55 @@ export function AdminSettingsClient() {
     setSettings(getStoredSettings());
     setIsMounted(true);
   }, []);
+
+  // Load barangay master list from Supabase public.barangays
+  const fetchBarangays = useCallback(async () => {
+    setIsLoadingBarangays(true);
+    setBarangaysError(null);
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from("barangays")
+        .select("id, name, is_active")
+        .order("name", { ascending: true });
+
+      if (fetchErr) {
+        console.error("Error fetching barangays from Supabase:", fetchErr.message);
+        setBarangaysError(fetchErr.message);
+      } else if (data) {
+        setBarangays(data);
+      }
+    } catch (err) {
+      console.error("Failed to query barangays table:", err);
+      const msg = err instanceof Error ? err.message : "Failed to load barangays";
+      setBarangaysError(msg);
+    } finally {
+      setIsLoadingBarangays(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchBarangays();
+  }, [fetchBarangays]);
+
+  // Dynamic active and archived counts from public.barangays
+  const activeCount = useMemo(() => {
+    return barangays.filter((b) => b.is_active).length;
+  }, [barangays]);
+
+  const archivedCount = useMemo(() => {
+    return barangays.filter((b) => !b.is_active).length;
+  }, [barangays]);
+
+  const filteredBarangays = useMemo(() => {
+    return barangays.filter((b) => {
+      if (statusFilter === "active" && !b.is_active) return false;
+      if (statusFilter === "archived" && b.is_active) return false;
+      if (searchQuery.trim()) {
+        return b.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+      }
+      return true;
+    });
+  }, [barangays, statusFilter, searchQuery]);
 
   const handleSave = () => {
     saveStoredSettings(settings);
@@ -82,7 +189,6 @@ export function AdminSettingsClient() {
       const exists = prev.coverageBarangays.includes(barangay);
       let updated: string[];
       if (exists) {
-        // If it's the last one, keep at least one
         if (prev.coverageBarangays.length <= 1) return prev;
         updated = prev.coverageBarangays.filter((b) => b !== barangay);
       } else {
@@ -101,10 +207,235 @@ export function AdminSettingsClient() {
 
   // Find assigned team for a barangay
   const getTeamForBarangay = (barangay: string) => {
-    const team = BUTUAN_MAINTENANCE_TEAMS.find((t) =>
+    const teams = getStoredTeams();
+    const team = teams.find((t) =>
       t.assignedBarangays.includes(barangay)
     );
     return team ? team.name : "Unassigned";
+  };
+
+  // Add new barangay
+  const handleAddBarangay = async () => {
+    const trimmed = newBarangayName.trim();
+    if (!trimmed) {
+      setAddError("Barangay name cannot be empty.");
+      return;
+    }
+
+    // Duplicate check among active barangays (case-insensitive)
+    const duplicate = barangays.some(
+      (b) => b.is_active && b.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      setAddError(`An active barangay named "${trimmed}" already exists.`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setAddError(null);
+
+    try {
+      // Let Supabase generate the UUID, set is_active = true
+      const { data, error } = await supabase
+        .from("barangays")
+        .insert({ name: trimmed, is_active: true })
+        .select("id, name, is_active")
+        .single();
+
+      if (error) {
+        console.error("Error inserting barangay:", error.message, error);
+        setAddError(`Failed to add barangay: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        setBarangays((prev) => {
+          const next = [...prev, data];
+          return next.sort((a, b) => a.name.localeCompare(b.name));
+        });
+      } else {
+        await fetchBarangays();
+      }
+
+      setIsAddOpen(false);
+      setNewBarangayName("");
+      setBarangayNotice({
+        type: "success",
+        message: `Barangay "${trimmed}" was successfully added to active coverage.`,
+      });
+      setTimeout(() => setBarangayNotice(null), 4000);
+    } catch (err) {
+      console.error("Unexpected error adding barangay:", err);
+      const msg = err instanceof Error ? err.message : "Failed to add barangay";
+      setAddError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Edit barangay name (preserve ID)
+  const handleSaveEdit = async () => {
+    if (!editingBarangay) return;
+    const trimmed = editBarangayName.trim();
+    if (!trimmed) {
+      setEditError("Barangay name cannot be empty.");
+      return;
+    }
+
+    if (trimmed === editingBarangay.name) {
+      setEditingBarangay(null);
+      return;
+    }
+
+    // Duplicate check among other active barangays
+    const duplicate = barangays.some(
+      (b) =>
+        b.id !== editingBarangay.id &&
+        b.is_active &&
+        b.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      setEditError(`An active barangay named "${trimmed}" already exists.`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setEditError(null);
+
+    try {
+      // Update existing row preserving ID
+      const { error } = await supabase
+        .from("barangays")
+        .update({ name: trimmed })
+        .eq("id", editingBarangay.id);
+
+      if (error) {
+        console.error("Error updating barangay:", error.message, error);
+        setEditError(`Failed to update barangay: ${error.message}`);
+        return;
+      }
+
+      setBarangays((prev) =>
+        prev
+          .map((b) => (b.id === editingBarangay.id ? { ...b, name: trimmed } : b))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+
+      const oldName = editingBarangay.name;
+      setEditingBarangay(null);
+      setBarangayNotice({
+        type: "success",
+        message: `Barangay "${oldName}" was updated to "${trimmed}".`,
+      });
+      setTimeout(() => setBarangayNotice(null), 4000);
+    } catch (err) {
+      console.error("Unexpected error updating barangay:", err);
+      const msg = err instanceof Error ? err.message : "Failed to update barangay";
+      setEditError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Archive barangay (Soft-delete only: is_active = false. NEVER DELETE!)
+  const handleConfirmArchive = async () => {
+    if (!archivingBarangay) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("barangays")
+        .update({ is_active: false })
+        .eq("id", archivingBarangay.id);
+
+      if (error) {
+        console.error("Error archiving barangay:", error.message, error);
+        setBarangayNotice({
+          type: "error",
+          message: `Failed to archive barangay: ${error.message}`,
+        });
+        return;
+      }
+
+      setBarangays((prev) =>
+        prev.map((b) =>
+          b.id === archivingBarangay.id ? { ...b, is_active: false } : b
+        )
+      );
+
+      const name = archivingBarangay.name;
+      setArchivingBarangay(null);
+      setBarangayNotice({
+        type: "success",
+        message: `Barangay "${name}" has been archived. Historical reports remain preserved.`,
+      });
+      setTimeout(() => setBarangayNotice(null), 4000);
+    } catch (err) {
+      console.error("Unexpected error archiving barangay:", err);
+      const msg = err instanceof Error ? err.message : "Failed to archive barangay";
+      setBarangayNotice({
+        type: "error",
+        message: msg,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Restore barangay (is_active = true, preserve ID)
+  const handleRestore = async (barangayToRestore: BarangayRecord) => {
+    // Prevent duplicate active barangay names
+    const duplicate = barangays.some(
+      (b) =>
+        b.id !== barangayToRestore.id &&
+        b.is_active &&
+        b.name.trim().toLowerCase() === barangayToRestore.name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      setBarangayNotice({
+        type: "error",
+        message: `Cannot restore "${barangayToRestore.name}": an active barangay with this name already exists.`,
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("barangays")
+        .update({ is_active: true })
+        .eq("id", barangayToRestore.id);
+
+      if (error) {
+        console.error("Error restoring barangay:", error.message, error);
+        setBarangayNotice({
+          type: "error",
+          message: `Failed to restore barangay: ${error.message}`,
+        });
+        return;
+      }
+
+      setBarangays((prev) =>
+        prev.map((b) =>
+          b.id === barangayToRestore.id ? { ...b, is_active: true } : b
+        )
+      );
+
+      setBarangayNotice({
+        type: "success",
+        message: `Barangay "${barangayToRestore.name}" has been restored to active coverage.`,
+      });
+      setTimeout(() => setBarangayNotice(null), 4000);
+    } catch (err) {
+      console.error("Unexpected error restoring barangay:", err);
+      const msg = err instanceof Error ? err.message : "Failed to restore barangay";
+      setBarangayNotice({
+        type: "error",
+        message: msg,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -245,7 +576,7 @@ export function AdminSettingsClient() {
           </CardContent>
         </Card>
 
-        {/* 2. Coverage (12 Selected Barangays) */}
+        {/* 2. Operational Coverage & Barangay Management */}
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -256,65 +587,241 @@ export function AdminSettingsClient() {
                 <div>
                   <CardTitle className="text-base">2. Operational Coverage</CardTitle>
                   <CardDescription className="text-xs">
-                    Scope of the 12 supported Butuan City barangays served by municipal repair teams.
+                    Master directory of Butuan City barangays served by municipal repair teams and reporting dispatch.
                   </CardDescription>
                 </div>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
                 <Badge variant="outline" className="font-mono text-xs">
-                  {settings.coverageBarangays.length} / 12 Active
+                  {isLoadingBarangays ? "Loading..." : `${activeCount} Active Barangays`}
                 </Badge>
-                {settings.coverageBarangays.length < SUPPORTED_BARANGAYS_12.length && (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={handleSelectAllBarangays}
-                    className="text-xs text-primary"
-                  >
-                    Select All 12
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => {
+                    setAddError(null);
+                    setNewBarangayName("");
+                    setIsAddOpen(true);
+                  }}
+                >
+                  <Plus data-icon="inline-start" className="size-3.5" />
+                  Add Barangay
+                </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-              {SUPPORTED_BARANGAYS_12.map((barangay) => {
-                const isSelected = settings.coverageBarangays.includes(barangay);
-                const assignedTeam = getTeamForBarangay(barangay);
+          <CardContent className="space-y-4">
+            {/* Action Notice Alert */}
+            {barangayNotice && (
+              <div
+                className={`rounded-lg border p-3 flex items-center justify-between gap-3 text-xs animate-in fade-in duration-200 ${
+                  barangayNotice.type === "success"
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                    : "border-destructive/40 bg-destructive/10 text-destructive"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {barangayNotice.type === "success" ? (
+                    <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="size-4 shrink-0 text-destructive" />
+                  )}
+                  <span>{barangayNotice.message}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="h-6 px-1.5 text-[11px]"
+                  onClick={() => setBarangayNotice(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            )}
 
-                return (
-                  <div
-                    key={barangay}
-                    onClick={() => toggleBarangay(barangay)}
-                    className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all ${
-                      isSelected
-                        ? "bg-card border-primary/40 shadow-xs hover:border-primary"
-                        : "bg-muted/20 border-border/50 opacity-60 hover:opacity-100"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
-                        {barangay}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground truncate max-w-[170px]">
-                        {assignedTeam}
-                      </span>
-                    </div>
-                    <Switch
-                      checked={isSelected}
-                      onCheckedChange={() => toggleBarangay(barangay)}
-                      size="sm"
-                      aria-label={`Toggle coverage for ${barangay}`}
-                    />
-                  </div>
-                );
-              })}
+            {/* Search and Status Filters */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search barangays..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 text-xs font-normal"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 self-start sm:self-auto bg-muted/40 p-1 rounded-lg border text-xs">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("all")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    statusFilter === "all"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  All ({barangays.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("active")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    statusFilter === "active"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Active ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("archived")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    statusFilter === "archived"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Archived ({archivedCount})
+                </button>
+              </div>
+            </div>
+
+            {/* Barangays Directory Table */}
+            <div className="rounded-lg border overflow-hidden">
+              <div className="max-h-[360px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="bg-muted/50 sticky top-0 z-10 backdrop-blur-xs">
+                    <TableRow>
+                      <TableHead className="text-xs font-semibold">Barangay</TableHead>
+                      <TableHead className="text-xs font-semibold w-[120px]">Status</TableHead>
+                      <TableHead className="text-xs font-semibold hidden sm:table-cell">
+                        Assigned Maintenance Team
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right w-[160px]">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoadingBarangays ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-28 text-center text-xs text-muted-foreground">
+                          Loading barangay directory from Supabase...
+                        </TableCell>
+                      </TableRow>
+                    ) : barangaysError ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-28 text-center text-xs text-destructive">
+                          <p className="font-semibold">Failed to load barangays</p>
+                          <p className="text-[11px] text-muted-foreground mt-1">{barangaysError}</p>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => fetchBarangays()}
+                            className="mt-2 text-xs"
+                          >
+                            <RotateCcw className="size-3 mr-1" /> Retry
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredBarangays.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-28 text-center text-xs text-muted-foreground">
+                          {searchQuery
+                            ? `No barangays found matching "${searchQuery}".`
+                            : statusFilter === "archived"
+                            ? "No archived barangays found."
+                            : "No barangays found in directory."}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredBarangays.map((b) => (
+                        <TableRow key={b.id} className="hover:bg-muted/40 transition-colors">
+                          <TableCell className="py-2.5">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs text-foreground">
+                                {b.name}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground sm:hidden">
+                                {getTeamForBarangay(b.name)}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            {b.is_active ? (
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 text-[10px] font-normal"
+                              >
+                                Active
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="text-muted-foreground text-[10px] font-normal"
+                              >
+                                Archived
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2.5 text-xs text-muted-foreground hidden sm:table-cell">
+                            {getTeamForBarangay(b.name)}
+                          </TableCell>
+                          <TableCell className="py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  setEditingBarangay(b);
+                                  setEditBarangayName(b.name);
+                                  setEditError(null);
+                                }}
+                                title="Edit barangay name"
+                              >
+                                <Pencil className="size-3 mr-1" />
+                                Edit
+                              </Button>
+                              {b.is_active ? (
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  className="h-7 px-2 text-xs text-amber-700 dark:text-amber-400 hover:text-amber-800 hover:bg-amber-500/10"
+                                  onClick={() => setArchivingBarangay(b)}
+                                  title="Archive barangay"
+                                >
+                                  <Archive className="size-3 mr-1" />
+                                  Archive
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="xs"
+                                  className="h-7 px-2 text-xs text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                  onClick={() => handleRestore(b)}
+                                  title="Restore barangay"
+                                  disabled={isSubmitting}
+                                >
+                                  <RotateCcw className="size-3 mr-1" />
+                                  Restore
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground flex items-center justify-between border-t py-3">
             <span>
-              All 12 barangays are synchronized with GIS mapping and incident reporting queues.
+              All active barangays are synchronized with GIS mapping, maintenance crews, and incident reporting queues.
             </span>
             <Link href="/admin/map" className="text-primary hover:underline text-xs">
               View Barangay Map &rarr;
@@ -563,6 +1070,180 @@ export function AdminSettingsClient() {
           </div>
         </div>
       </div>
+
+      {/* Add Barangay Dialog */}
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Add New Barangay</DialogTitle>
+            <DialogDescription className="text-xs">
+              Register a new official Butuan City barangay into the master directory. It will immediately become available across resident reporting and central dispatch.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-barangay-name" className="text-xs font-semibold">
+                Barangay Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="new-barangay-name"
+                value={newBarangayName}
+                onChange={(e) => {
+                  setNewBarangayName(e.target.value);
+                  setAddError(null);
+                }}
+                placeholder="Enter official barangay name..."
+                className="text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isSubmitting && newBarangayName.trim()) {
+                    e.preventDefault();
+                    handleAddBarangay();
+                  }
+                }}
+              />
+              {addError && (
+                <p className="text-[11px] text-destructive font-medium">{addError}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddOpen(false)}
+              disabled={isSubmitting}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={handleAddBarangay}
+              disabled={isSubmitting || !newBarangayName.trim()}
+              className="text-xs"
+            >
+              {isSubmitting ? "Adding..." : "Add Barangay"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Barangay Dialog */}
+      <Dialog
+        open={!!editingBarangay}
+        onOpenChange={(open) => !open && setEditingBarangay(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Edit Barangay Name</DialogTitle>
+            <DialogDescription className="text-xs">
+              Update the official spelling of this barangay. The existing database ID and historical report associations are strictly preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-barangay-name" className="text-xs font-semibold">
+                Barangay Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="edit-barangay-name"
+                value={editBarangayName}
+                onChange={(e) => {
+                  setEditBarangayName(e.target.value);
+                  setEditError(null);
+                }}
+                placeholder="Enter corrected barangay name..."
+                className="text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isSubmitting && editBarangayName.trim()) {
+                    e.preventDefault();
+                    handleSaveEdit();
+                  }
+                }}
+              />
+              {editError && (
+                <p className="text-[11px] text-destructive font-medium">{editError}</p>
+              )}
+            </div>
+            {editingBarangay && (
+              <div className="text-[10px] text-muted-foreground bg-muted/40 p-2 rounded border font-mono">
+                Preserved Record ID: {editingBarangay.id}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditingBarangay(null)}
+              disabled={isSubmitting}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={handleSaveEdit}
+              disabled={isSubmitting || !editBarangayName.trim()}
+              className="text-xs"
+            >
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Archive Confirmation Dialog (NEVER Hard Delete) */}
+      <Dialog
+        open={!!archivingBarangay}
+        onOpenChange={(open) => !open && setArchivingBarangay(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+              <AlertTriangle className="size-4 text-amber-500" />
+              Archive Barangay
+            </DialogTitle>
+            <DialogDescription className="text-xs leading-relaxed">
+              Are you sure you want to archive <strong>{archivingBarangay?.name}</strong>? Existing reports and historical records will be preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg bg-muted/40 p-3 text-[11px] text-muted-foreground space-y-1 border">
+            <p className="font-semibold text-foreground text-xs">Archive Safeguards:</p>
+            <p>• The database record is retained with status set to inactive (<code>is_active = false</code>).</p>
+            <p>• Historical incidents, technician dispatches, and reports remain intact.</p>
+            <p>• You can restore this barangay to active status at any time.</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setArchivingBarangay(null)}
+              disabled={isSubmitting}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleConfirmArchive}
+              disabled={isSubmitting}
+              className="text-xs"
+            >
+              {isSubmitting ? "Archiving..." : "Archive Barangay"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

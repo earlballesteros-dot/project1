@@ -288,7 +288,7 @@ export function HeroLiveCard() {
       </CardContent>
       <CardFooter className="flex items-center justify-between border-t bg-muted/20 text-xs text-muted-foreground py-3">
         <span>Active Dispatches: {isLoading ? "..." : error ? "—" : activeDispatches}</span>
-        <Link href="/admin#reports" className="font-medium text-primary hover:underline">
+        <Link href="/admin/reports" className="font-medium text-primary hover:underline">
           View full dispatch table &rarr;
         </Link>
       </CardFooter>
