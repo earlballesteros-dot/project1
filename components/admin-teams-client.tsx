@@ -59,6 +59,7 @@ import {
   resetTeamsToDefault,
   syncTeamToSupabase,
 } from "@/lib/teams-data";
+import { supabase } from "@/lib/supabase";
 
 export { BUTUAN_MAINTENANCE_TEAMS, type MaintenanceTeamConfig };
 
@@ -69,6 +70,51 @@ export function AdminTeamsClient() {
   const [editingBarangays, setEditingBarangays] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Dynamic active barangays from Supabase
+  const [availableBarangays, setAvailableBarangays] = useState<string[]>([]);
+  const [isLoadingBarangays, setIsLoadingBarangays] = useState(true);
+
+  // Load active barangays from public.barangays
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchActiveBarangays() {
+      setIsLoadingBarangays(true);
+      try {
+        const { data, error } = await supabase
+          .from("barangays")
+          .select("name, is_active")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error("Error fetching barangays for maintenance teams:", error.message);
+          setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
+        } else if (data && data.length > 0) {
+          setAvailableBarangays(data.map((b) => b.name));
+        } else {
+          setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        console.error("Failed to query barangays:", err);
+        setAvailableBarangays([...SUPPORTED_12_BARANGAYS]);
+      } finally {
+        if (isMounted) {
+          setIsLoadingBarangays(false);
+        }
+      }
+    }
+
+    fetchActiveBarangays();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Synchronize reports and teams with localStorage stores
   useEffect(() => {
@@ -205,7 +251,7 @@ export function AdminTeamsClient() {
 
   const handleSelectAllBarangays = () => {
     setSaveSuccess(false);
-    setEditingBarangays([...SUPPORTED_12_BARANGAYS]);
+    setEditingBarangays([...availableBarangays]);
   };
 
   const handleClearAllBarangays = () => {
@@ -896,7 +942,7 @@ export function AdminTeamsClient() {
                       <h3 className="font-semibold text-sm">Assign / Reassign Coverage Barangays</h3>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Select one or multiple barangays from the 12 supported Butuan City areas to assign to this maintenance crew.
+                      Select one or multiple barangays from the {availableBarangays.length} active Butuan City areas to assign to this maintenance crew.
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -931,9 +977,16 @@ export function AdminTeamsClient() {
                   </div>
                 </div>
 
-                {/* 12 Supported Barangays Selector Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {SUPPORTED_12_BARANGAYS.map((brgy) => {
+                {isLoadingBarangays && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground py-6">
+                    <RotateCw className="size-3.5 animate-spin text-primary" />
+                    <span>Loading active barangays from database...</span>
+                  </div>
+                )}
+
+                {/* Active Barangays Selector Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[340px] overflow-y-auto p-1 border rounded-lg">
+                  {availableBarangays.map((brgy) => {
                     const isSelected = editingBarangays.includes(brgy);
                     const otherAssignedTeam = teams.find(
                       (t) => t.id !== selectedTeam.id && t.assignedBarangays.includes(brgy)
@@ -952,7 +1005,7 @@ export function AdminTeamsClient() {
                         )}
                       >
                         <div className="flex items-center justify-between w-full">
-                          <span className="font-medium text-xs">{brgy}</span>
+                          <span className="font-medium text-xs truncate max-w-[140px]">{brgy}</span>
                           {isSelected && <Check className="size-3.5 text-primary shrink-0" />}
                         </div>
                         {otherAssignedTeam && !isSelected ? (
@@ -977,7 +1030,7 @@ export function AdminTeamsClient() {
                 <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground pt-2.5 border-t flex-wrap gap-2">
                   <span className="flex items-center gap-1.5">
                     <Layers className="size-3.5 text-primary" />
-                    <strong>{editingBarangays.length}</strong> of {SUPPORTED_12_BARANGAYS.length} barangays selected
+                    <strong>{editingBarangays.length}</strong> of {availableBarangays.length} barangays selected
                   </span>
                   {saveSuccess && (
                     <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 text-xs animate-in fade-in duration-200">
