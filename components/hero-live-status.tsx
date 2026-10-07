@@ -172,13 +172,19 @@ function getBarangayName(barangays: HeroReport["barangays"]): string {
   return barangays.name || "Butuan City";
 }
 
-export function HeroLiveMetrics() {
+export function HeroLiveMetrics({
+  barangaysCovered,
+}: {
+  barangaysCovered?: number;
+} = {}) {
   const { resolvedThisMonth, openReports, isLoading, error } = useHeroLiveData();
 
   return (
     <div className="grid grid-cols-3 gap-4 pt-4 border-t w-full max-w-lg text-center sm:text-left">
       <div>
-        <span className="font-heading text-2xl font-bold text-foreground">12</span>
+        <span className="font-heading text-2xl font-bold text-foreground">
+          {barangaysCovered !== undefined ? barangaysCovered : "—"}
+        </span>
         <p className="text-xs text-muted-foreground">Barangays Covered</p>
       </div>
       <div>

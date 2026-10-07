@@ -24,10 +24,75 @@ import { Beams } from "@/components/beams";
 import { HeroAction } from "@/components/hero-action";
 import { HeroLiveMetrics, HeroLiveCard } from "@/components/hero-live-status";
 import { isAdmin } from "@/lib/roles-server";
-import { MOCK_BARANGAYS } from "@/lib/mock-data";
+import { supabase } from "@/lib/supabase";
+
+function BarangayCoverageGrid({
+  barangays,
+  error,
+}: {
+  barangays: { id: string; name: string; is_active: boolean }[];
+  error: string | null;
+}) {
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
+        <p className="font-semibold">Unable to load coverage barangays at this time.</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Please refresh the page to reload the coverage list.
+        </p>
+      </div>
+    );
+  }
+
+  if (!barangays || barangays.length === 0) {
+    return (
+      <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+        No active barangays found.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      {barangays.map((brgy) => (
+        <div
+          key={brgy.id}
+          className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm font-medium transition-colors hover:border-primary/50"
+        >
+          <div className="size-2 rounded-full bg-emerald-500 shrink-0" />
+          <span className="truncate">{brgy.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default async function Home() {
   const admin = await isAdmin();
+
+  let barangays: { id: string; name: string; is_active: boolean }[] = [];
+  let barangaysError: string | null = null;
+
+  try {
+    const { data, error } = await supabase
+      .from("barangays")
+      .select("id, name, is_active")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching barangays for homepage:", error.message);
+      barangaysError = error.message;
+    } else if (data) {
+      barangays = data;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unexpected error";
+    console.error("Failed to query barangays:", message);
+    barangaysError = message;
+  }
+
+  const barangaysCovered = barangays.length;
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans text-foreground">
       <Navbar />
@@ -68,7 +133,7 @@ export default async function Home() {
                 <HeroAction initialIsAdmin={admin} />
 
                 {/* Key Metrics Pill */}
-                <HeroLiveMetrics />
+                <HeroLiveMetrics barangaysCovered={barangaysCovered} />
               </div>
 
               {/* Hero Visual Card / Live Status Snapshot */}
@@ -168,17 +233,7 @@ export default async function Home() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {MOCK_BARANGAYS.map((brgy) => (
-                <div
-                  key={brgy}
-                  className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm font-medium transition-colors hover:border-primary/50"
-                >
-                  <div className="size-2 rounded-full bg-emerald-500" />
-                  <span className="truncate">{brgy}</span>
-                </div>
-              ))}
-            </div>
+            <BarangayCoverageGrid barangays={barangays} error={barangaysError} />
 
             {/* Emergency Hotline Banner */}
             <div className="mt-12 rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
