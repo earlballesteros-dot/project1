@@ -524,205 +524,211 @@ export function AdminReportsClient() {
         </CardHeader>
 
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Ticket ID</TableHead>
-                <TableHead>Reporter & Contact</TableHead>
-                <TableHead>Location & Pole</TableHead>
-                <TableHead>Problem & Description</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Assigned Crew</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
+          <div
+            className={`overflow-x-auto [&>[data-slot=table-container]]:overflow-visible ${
+              filteredReports.length > 10 ? "overflow-y-auto max-h-[580px]" : ""
+            }`}
+          >
+            <Table>
+              <TableHeader className="sticky top-0 bg-card [&_th]:bg-card z-10 border-b">
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground text-xs">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Clock className="size-5 animate-spin text-primary" />
-                      <span>Loading reports from Supabase...</span>
-                    </div>
-                  </TableCell>
+                  <TableHead>Ticket ID</TableHead>
+                  <TableHead>Reporter & Contact</TableHead>
+                  <TableHead>Location & Pole</TableHead>
+                  <TableHead>Problem & Description</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Assigned Crew</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
-              ) : filteredReports.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground text-xs">
-                    <div className="flex flex-col items-center justify-center gap-1.5">
-                      {error ? (
-                        <>
-                          <AlertOctagon className="size-5 text-destructive" />
-                          <span className="text-destructive font-medium">
-                            Unable to load reports from Supabase
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {error}
-                          </span>
-                        </>
-                      ) : (
-                        <span>No incident reports found matching current criteria.</span>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredReports.map((report) => (
-                  <TableRow
-                    key={report.id}
-                    className="hover:bg-muted/40 cursor-pointer"
-                    onClick={() => setSelectedReport(report)}
-                  >
-                    {/* Ticket ID & Date */}
-                    <TableCell className="font-mono text-xs font-semibold">
-                      <div className="flex flex-col">
-                        <span className="text-foreground">{report.id}</span>
-                        <span className="text-[10px] text-muted-foreground font-normal">
-                          {report.reportedDate}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    {/* Reporter Name & Contact Info */}
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-xs text-foreground">
-                          {report.residentName}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground font-mono">
-                          {report.contactInfo || "No contact info"}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    {/* Streetlight Location & Pole Tag */}
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-xs text-foreground">
-                          {report.barangay}
-                        </span>
-                        <span
-                          className="text-[11px] text-muted-foreground truncate max-w-[200px]"
-                          title={report.landmark}
-                        >
-                          {report.landmark}
-                        </span>
-                        {report.poleNumber && report.poleNumber !== "N/A" && (
-                          <span className="text-[10px] text-muted-foreground/75 font-mono">
-                            Pole: {report.poleNumber}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    {/* Problem Type & Description */}
-                    <TableCell>
-                      <div className="flex flex-col max-w-[220px]">
-                        <span className="text-xs font-medium text-foreground">
-                          {report.issueType}
-                        </span>
-                        {report.description ? (
-                          <span
-                            className="text-[11px] text-muted-foreground truncate"
-                            title={report.description}
-                          >
-                            {report.description}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground italic">
-                            No description
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    {/* Priority Badge */}
-                    <TableCell>
-                      <Badge
-                        variant={
-                          report.priority === "Emergency"
-                            ? "destructive"
-                            : report.priority === "High"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="text-[10px]"
-                      >
-                        {report.priority}
-                      </Badge>
-                    </TableCell>
-
-                    {/* Assigned Crew */}
-                    <TableCell className="text-xs" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={report.assignedTeam || "Pending Dispatch"}
-                        onChange={(e) => handleAssignCrew(report.id, e.target.value)}
-                        className="h-7 w-full max-w-[170px] rounded border border-input/40 hover:border-input bg-transparent px-2 py-0.5 text-xs text-foreground transition-colors cursor-pointer outline-none focus:border-ring dark:bg-input/20 truncate"
-                        title="Assign or reassign maintenance crew"
-                      >
-                        <option value="Pending Dispatch" className="bg-background text-foreground">
-                          Pending Dispatch
-                        </option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.name} className="bg-background text-foreground">
-                            {t.name} {t.assignedBarangays.includes(report.barangay) ? "★" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </TableCell>
-
-                    {/* Status Badge */}
-                    <TableCell>
-                      <Badge
-                        variant={
-                          report.status === "Resolved"
-                            ? "outline"
-                            : report.status === "In Progress"
-                            ? "secondary"
-                            : "destructive"
-                        }
-                        className="text-[11px]"
-                      >
-                        {report.status}
-                      </Badge>
-                    </TableCell>
-
-                    {/* Action Button */}
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedReport(report);
-                          }}
-                          className="text-xs text-primary"
-                        >
-                          <Eye className="size-3 mr-1" />
-                          View
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteReport(report.id);
-                          }}
-                          className="text-xs text-destructive hover:bg-destructive/10"
-                          title="Delete report"
-                        >
-                          <Trash2 className="size-3.5 mr-1" />
-                          Delete
-                        </Button>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground text-xs">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Clock className="size-5 animate-spin text-primary" />
+                        <span>Loading reports from Supabase...</span>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : filteredReports.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground text-xs">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        {error ? (
+                          <>
+                            <AlertOctagon className="size-5 text-destructive" />
+                            <span className="text-destructive font-medium">
+                              Unable to load reports from Supabase
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {error}
+                            </span>
+                          </>
+                        ) : (
+                          <span>No incident reports found matching current criteria.</span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredReports.map((report) => (
+                    <TableRow
+                      key={report.id}
+                      className="hover:bg-muted/40 cursor-pointer"
+                      onClick={() => setSelectedReport(report)}
+                    >
+                      {/* Ticket ID & Date */}
+                      <TableCell className="font-mono text-xs font-semibold">
+                        <div className="flex flex-col">
+                          <span className="text-foreground">{report.id}</span>
+                          <span className="text-[10px] text-muted-foreground font-normal">
+                            {report.reportedDate}
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      {/* Reporter Name & Contact Info */}
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-xs text-foreground">
+                            {report.residentName}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-mono">
+                            {report.contactInfo || "No contact info"}
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      {/* Streetlight Location & Pole Tag */}
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-xs text-foreground">
+                            {report.barangay}
+                          </span>
+                          <span
+                            className="text-[11px] text-muted-foreground truncate max-w-[200px]"
+                            title={report.landmark}
+                          >
+                            {report.landmark}
+                          </span>
+                          {report.poleNumber && report.poleNumber !== "N/A" && (
+                            <span className="text-[10px] text-muted-foreground/75 font-mono">
+                              Pole: {report.poleNumber}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* Problem Type & Description */}
+                      <TableCell>
+                        <div className="flex flex-col max-w-[220px]">
+                          <span className="text-xs font-medium text-foreground">
+                            {report.issueType}
+                          </span>
+                          {report.description ? (
+                            <span
+                              className="text-[11px] text-muted-foreground truncate"
+                              title={report.description}
+                            >
+                              {report.description}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground italic">
+                              No description
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* Priority Badge */}
+                      <TableCell>
+                        <Badge
+                          variant={
+                            report.priority === "Emergency"
+                              ? "destructive"
+                              : report.priority === "High"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="text-[10px]"
+                        >
+                          {report.priority}
+                        </Badge>
+                      </TableCell>
+
+                      {/* Assigned Crew */}
+                      <TableCell className="text-xs" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={report.assignedTeam || "Pending Dispatch"}
+                          onChange={(e) => handleAssignCrew(report.id, e.target.value)}
+                          className="h-7 w-full max-w-[170px] rounded border border-input/40 hover:border-input bg-transparent px-2 py-0.5 text-xs text-foreground transition-colors cursor-pointer outline-none focus:border-ring dark:bg-input/20 truncate"
+                          title="Assign or reassign maintenance crew"
+                        >
+                          <option value="Pending Dispatch" className="bg-background text-foreground">
+                            Pending Dispatch
+                          </option>
+                          {teams.map((t) => (
+                            <option key={t.id} value={t.name} className="bg-background text-foreground">
+                              {t.name} {t.assignedBarangays.includes(report.barangay) ? "★" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </TableCell>
+
+                      {/* Status Badge */}
+                      <TableCell>
+                        <Badge
+                          variant={
+                            report.status === "Resolved"
+                              ? "outline"
+                              : report.status === "In Progress"
+                              ? "secondary"
+                              : "destructive"
+                          }
+                          className="text-[11px]"
+                        >
+                          {report.status}
+                        </Badge>
+                      </TableCell>
+
+                      {/* Action Button */}
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReport(report);
+                            }}
+                            className="text-xs text-primary"
+                          >
+                            <Eye className="size-3 mr-1" />
+                            View
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteReport(report.id);
+                            }}
+                            className="text-xs text-destructive hover:bg-destructive/10"
+                            title="Delete report"
+                          >
+                            <Trash2 className="size-3.5 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
 
         <CardFooter className="border-t py-3 text-xs text-muted-foreground flex items-center justify-between">

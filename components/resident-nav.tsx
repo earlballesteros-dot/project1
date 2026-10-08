@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import { Lightbulb, ArrowLeft, Shield, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,18 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export function ResidentNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user } = useUser();
+
+  const residentName =
+    user?.fullName ||
+    user?.firstName ||
+    (user?.primaryEmailAddress?.emailAddress
+      ? user.primaryEmailAddress.emailAddress.split("@")[0]
+      : "Resident");
+
+  const initials = user?.firstName
+    ? `${user.firstName[0]}${user.lastName ? user.lastName[0] : ""}`.toUpperCase()
+    : "RP";
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-md">
@@ -60,11 +73,11 @@ export function ResidentNav() {
 
           <div className="flex items-center gap-2.5 pl-2 border-l">
             <Avatar size="sm" className="bg-primary/10 text-primary border border-primary/20">
-              <AvatarFallback className="font-semibold text-xs text-primary">ER</AvatarFallback>
+              <AvatarFallback className="font-semibold text-xs text-primary">{initials}</AvatarFallback>
             </Avatar>
             <div className="hidden lg:flex flex-col text-left">
-              <span className="text-xs font-medium leading-none">Elena Ramos</span>
-              <span className="text-[10px] text-muted-foreground">Brgy. Libertad, BXU</span>
+              <span className="text-xs font-medium leading-none">{residentName}</span>
+              <span className="text-[10px] text-muted-foreground">Citizen Account</span>
             </div>
           </div>
 
