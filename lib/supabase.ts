@@ -8,7 +8,14 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey);
 export function createClerkSupabaseClient(getToken: () => Promise<string | null>) {
   return createClient(supabaseUrl, supabasePublishableKey, {
     accessToken: async () => {
-      return await getToken();
+      if (typeof window === "undefined") {
+        return null;
+      }
+      try {
+        return await getToken();
+      } catch {
+        return null;
+      }
     },
   });
 }

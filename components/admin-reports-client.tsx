@@ -51,9 +51,8 @@ import {
   type PriorityLevel,
 } from "@/lib/mock-data";
 import {
-  getStoredTeams,
-  BUTUAN_MAINTENANCE_TEAMS,
   type MaintenanceTeamConfig,
+  mapDbTeamToConfig,
 } from "@/lib/teams-data";
 import { useAuth } from "@clerk/nextjs";
 import { useIsAdmin } from "@/lib/roles";
@@ -64,15 +63,40 @@ export function AdminReportsClient() {
   const supabase = useMemo(() => createClerkSupabaseClient(getToken), [getToken]);
   const isAdmin = useIsAdmin();
   const [reports, setReports] = useState<StreetlightReport[]>([]);
-  const [teams, setTeams] = useState<MaintenanceTeamConfig[]>(BUTUAN_MAINTENANCE_TEAMS);
+  const [teams, setTeams] = useState<MaintenanceTeamConfig[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [selectedReport, setSelectedReport] = useState<StreetlightReport | null>(null);
-  const [crewToAssign, setCrewToAssign] = useState<string>("Pending Dispatch");
+  const [crewToAssign, setCrewToAssign] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
   const [isPhotoLoading, setIsPhotoLoading] = useState<boolean>(false);
   const [photoError, setPhotoError] = useState<boolean>(false);
+
+  // Load teams from Supabase public.maintenance_teams
+  const fetchTeams = useCallback(async () => {
+    try {
+      const { data, error: teamsError } = await supabase
+        .from("maintenance_teams")
+        .select("*")
+        .order("team_code", { ascending: true });
+
+      if (teamsError) {
+        console.error("Error loading maintenance teams:", teamsError.message);
+        return;
+      }
+
+      if (data) {
+        setTeams(data.map(mapDbTeamToConfig));
+      }
+    } catch (err) {
+      console.error("Failed to query maintenance_teams:", err);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
 
   // Load reports from Supabase public.reports
   const fetchReports = useCallback(async () => {
@@ -126,12 +150,15 @@ export function AdminReportsClient() {
           }
 
           // maintenance_teams foreign key relation
-          let assignedTeamName = "Pending Dispatch";
+          let assignedTeamName = "";
+          let assignedTeamId: string | null = row.assigned_team_id || null;
           if (row.maintenance_teams) {
             if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
-              assignedTeamName = row.maintenance_teams[0]?.team_name || "Pending Dispatch";
+              assignedTeamName = row.maintenance_teams[0]?.team_name || "";
+              if (!assignedTeamId) assignedTeamId = row.maintenance_teams[0]?.id || null;
             } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
-              assignedTeamName = row.maintenance_teams.team_name || "Pending Dispatch";
+              assignedTeamName = row.maintenance_teams.team_name || "";
+              if (!assignedTeamId) assignedTeamId = row.maintenance_teams.id || null;
             }
           }
 
@@ -163,6 +190,7 @@ export function AdminReportsClient() {
             priority: (row.priority as PriorityLevel) || "High",
             status: (row.status as ReportStatus) || "Pending",
             assignedTeam: assignedTeamName,
+            assignedTeamId,
             reportedDate,
           };
         });
@@ -183,27 +211,30 @@ export function AdminReportsClient() {
     fetchReports();
   }, [fetchReports]);
 
-  // Synchronize teams with local storage
+  // Synchronize reports and teams with system events
   useEffect(() => {
-    setTeams(getStoredTeams());
-
-    const handleStorageChange = () => {
-      setTeams(getStoredTeams());
+    const handleReportsChange = () => {
+      fetchReports();
     };
 
-    window.addEventListener("butuan-teams-changed", handleStorageChange);
-    window.addEventListener("storage", handleStorageChange);
+    const handleTeamsChange = () => {
+      fetchTeams();
+    };
+
+    window.addEventListener("butuan-reports-changed", handleReportsChange);
+    window.addEventListener("butuan-teams-changed", handleTeamsChange);
+    window.addEventListener("storage", handleReportsChange);
     return () => {
-      window.removeEventListener("butuan-teams-changed", handleStorageChange);
-      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("butuan-reports-changed", handleReportsChange);
+      window.removeEventListener("butuan-teams-changed", handleTeamsChange);
+      window.removeEventListener("storage", handleReportsChange);
     };
-  }, []);
+  }, [fetchReports, fetchTeams]);
 
   // Sync selected crew dropdown when selected report changes
   useEffect(() => {
     if (selectedReport) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCrewToAssign(selectedReport.assignedTeam || "Pending Dispatch");
+      setCrewToAssign(selectedReport.assignedTeamId || "");
     }
   }, [selectedReport]);
 
@@ -337,49 +368,29 @@ export function AdminReportsClient() {
     }
   };
 
-  const handleAssignCrew = async (id: string, newTeam: string) => {
+  const handleAssignCrew = async (id: string, newTeamIdOrName: string) => {
     try {
       let teamUuid: string | null = null;
-      let teamDisplayName = "Pending Dispatch";
+      let teamDisplayName = "";
 
-      if (newTeam && newTeam !== "Pending Dispatch") {
-        const targetTeam = teams.find((t) => t.name === newTeam || t.id === newTeam);
+      if (
+        newTeamIdOrName &&
+        newTeamIdOrName !== "Pending Dispatch" &&
+        newTeamIdOrName !== "unassigned" &&
+        newTeamIdOrName !== ""
+      ) {
+        const targetTeam = teams.find(
+          (t) =>
+            t.id === newTeamIdOrName ||
+            t.name === newTeamIdOrName ||
+            (t.teamCode && t.teamCode === newTeamIdOrName) ||
+            (t.keyword && t.keyword === newTeamIdOrName)
+        );
         if (targetTeam) {
+          teamUuid = targetTeam.id;
           teamDisplayName = targetTeam.name;
-
-          // Check if team ID is already a valid UUID
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetTeam.id);
-          if (isUuid) {
-            teamUuid = targetTeam.id;
-          } else {
-            // Query Supabase maintenance_teams by team_code or team_name
-            try {
-              const { data: teamRow, error: teamQueryError } = await supabase
-                .from("maintenance_teams")
-                .select("id")
-                .or(`team_code.eq.${targetTeam.id},team_name.eq.${targetTeam.name}`)
-                .maybeSingle();
-
-              if (teamRow?.id) {
-                teamUuid = teamRow.id;
-              } else if (teamQueryError) {
-                console.error("Error finding maintenance team UUID in Supabase:", teamQueryError.message);
-              }
-            } catch (err) {
-              console.error("Failed to query maintenance_teams table:", err);
-            }
-
-            // Fallback lookup if query didn't return
-            if (!teamUuid) {
-              const TEAM_UUID_MAP: Record<string, string> = {
-                "BXU-CREW-01": "1db46bf7-9881-4b17-9709-7642872aa16c",
-                "BXU-CREW-02": "d8209e09-2933-4b20-a809-9ddbeb2fcfbc",
-                "BXU-CREW-03": "c8880b8a-2f30-4999-ac86-83fb01c9f1f5",
-                "BXU-CREW-04": "e5042ceb-0e3d-4f12-86c4-58319c70d0bd",
-              };
-              teamUuid = TEAM_UUID_MAP[targetTeam.id] || targetTeam.id;
-            }
-          }
+        } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newTeamIdOrName)) {
+          teamUuid = newTeamIdOrName;
         }
       }
 
@@ -396,12 +407,24 @@ export function AdminReportsClient() {
 
       // Update local React state only after Supabase update succeeds
       setReports((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, assignedTeam: teamDisplayName } : r))
+        prev.map((r) =>
+          r.id === id
+            ? { ...r, assignedTeam: teamDisplayName, assignedTeamId: teamUuid }
+            : r
+        )
       );
       if (selectedReport && selectedReport.id === id) {
-        setSelectedReport((prev) => (prev ? { ...prev, assignedTeam: teamDisplayName } : null));
-        setCrewToAssign(teamDisplayName);
+        setSelectedReport((prev) =>
+          prev
+            ? { ...prev, assignedTeam: teamDisplayName, assignedTeamId: teamUuid }
+            : null
+        );
+        setCrewToAssign(teamUuid || "");
       }
+
+      // Notify other views immediately
+      window.dispatchEvent(new Event("butuan-reports-changed"));
+      window.dispatchEvent(new Event("storage"));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unexpected error assigning team";
       console.error("Error assigning crew:", err);
@@ -661,16 +684,16 @@ export function AdminReportsClient() {
                       {/* Assigned Crew */}
                       <TableCell className="text-xs" onClick={(e) => e.stopPropagation()}>
                         <select
-                          value={report.assignedTeam || "Pending Dispatch"}
+                          value={report.assignedTeamId || ""}
                           onChange={(e) => handleAssignCrew(report.id, e.target.value)}
                           className="h-7 w-full max-w-[170px] rounded border border-input/40 hover:border-input bg-transparent px-2 py-0.5 text-xs text-foreground transition-colors cursor-pointer outline-none focus:border-ring dark:bg-input/20 truncate"
                           title="Assign or reassign maintenance crew"
                         >
-                          <option value="Pending Dispatch" className="bg-background text-foreground">
-                            Pending Dispatch
+                          <option value="" className="bg-background text-foreground">
+                            Unassigned
                           </option>
                           {teams.map((t) => (
-                            <option key={t.id} value={t.name} className="bg-background text-foreground">
+                            <option key={t.id} value={t.id} className="bg-background text-foreground">
                               {t.name} {t.assignedBarangays.includes(report.barangay) ? "★" : ""}
                             </option>
                           ))}
@@ -771,7 +794,7 @@ export function AdminReportsClient() {
             <DialogDescription className="text-xs">
               Reported on {selectedReport?.reportedDate} • Assigned to:{" "}
               <strong className="text-foreground">
-                {selectedReport?.assignedTeam || "Pending Dispatch"}
+                {selectedReport?.assignedTeam || "Unassigned"}
               </strong>
             </DialogDescription>
           </DialogHeader>
@@ -829,10 +852,10 @@ export function AdminReportsClient() {
                     Assigned Crew:
                   </span>
                   <span className="col-span-2 font-semibold text-foreground flex items-center gap-2">
-                    {selectedReport.assignedTeam || "Pending Dispatch"}
-                    {selectedReport.assignedTeam && selectedReport.assignedTeam !== "Pending Dispatch" ? (
+                    {selectedReport.assignedTeam || "Unassigned"}
+                    {selectedReport.assignedTeamId ? (
                       <Badge variant="secondary" className="text-[10px] font-normal py-0">
-                        Dispatched
+                        Assigned
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] font-normal py-0 text-amber-600 dark:text-amber-400">
@@ -917,13 +940,13 @@ export function AdminReportsClient() {
                     onChange={(e) => setCrewToAssign(e.target.value)}
                     className="flex h-8 flex-1 rounded-lg border border-input bg-transparent px-2.5 py-1 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 text-foreground cursor-pointer"
                   >
-                    <option value="Pending Dispatch" className="bg-background text-foreground">
-                      Pending Dispatch (Unassigned)
+                    <option value="" className="bg-background text-foreground">
+                      Unassigned (No Crew Assigned)
                     </option>
                     {teams.map((t) => {
                       const isDesignated = t.assignedBarangays.includes(selectedReport.barangay);
                       return (
-                        <option key={t.id} value={t.name} className="bg-background text-foreground">
+                        <option key={t.id} value={t.id} className="bg-background text-foreground">
                           {t.name} {isDesignated ? "★ (Designated Area)" : ""}
                         </option>
                       );
@@ -933,7 +956,7 @@ export function AdminReportsClient() {
                   <Button
                     size="xs"
                     onClick={() => handleAssignCrew(selectedReport.id, crewToAssign)}
-                    disabled={crewToAssign === selectedReport.assignedTeam}
+                    disabled={crewToAssign === (selectedReport.assignedTeamId || "")}
                     className="gap-1 px-3 shrink-0"
                   >
                     <Check className="size-3" />
@@ -942,7 +965,7 @@ export function AdminReportsClient() {
                 </div>
 
                 {/* Quick shortcut if designated district crew is not yet assigned */}
-                {designatedTeam && selectedReport.assignedTeam !== designatedTeam.name && (
+                {designatedTeam && selectedReport.assignedTeamId !== designatedTeam.id && (
                   <div className="flex items-center justify-between text-[11px] bg-primary/5 border border-primary/20 rounded p-1.5 px-2 mt-0.5">
                     <span className="text-muted-foreground">
                       Designated for {selectedReport.barangay}:{" "}
@@ -952,7 +975,7 @@ export function AdminReportsClient() {
                       variant="outline"
                       size="xs"
                       className="h-6 text-[10px] text-primary hover:text-primary gap-1"
-                      onClick={() => handleAssignCrew(selectedReport.id, designatedTeam.name)}
+                      onClick={() => handleAssignCrew(selectedReport.id, designatedTeam.id)}
                     >
                       Assign {designatedTeam.keyword}
                     </Button>

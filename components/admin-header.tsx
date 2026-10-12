@@ -16,24 +16,45 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getStoredReports } from "@/lib/reports-store";
-import type { StreetlightReport } from "@/lib/mock-data";
+import type { StreetlightReport, PriorityLevel, ReportStatus } from "@/lib/mock-data";
 import { useIsAdmin } from "@/lib/roles";
+import { useAuth } from "@clerk/nextjs";
+import { createClerkSupabaseClient, supabase as defaultSupabase } from "@/lib/supabase";
 
 interface AdminHeaderProps {
   onToggleSidebar: () => void;
+}
+
+interface DbReportRow {
+  id: string;
+  reporter_name?: string | null;
+  contact_info?: string | null;
+  street_purok_landmark?: string | null;
+  pole_tag_id?: string | null;
+  problem_type?: string | null;
+  description_hazard?: string | null;
+  photo_url?: string | null;
+  priority?: string | null;
+  status?: string | null;
+  assigned_team_id?: string | null;
+  created_at?: string | null;
+  barangays?: { id?: string; name?: string } | { id?: string; name?: string }[] | null;
+  maintenance_teams?: { id?: string; team_name?: string } | { id?: string; team_name?: string }[] | null;
 }
 
 const READ_NOTIFICATIONS_STORAGE_KEY = "butuan_read_notifications";
 
 export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
   const isAdmin = useIsAdmin();
+  const { getToken } = useAuth();
   const [reports, setReports] = useState<StreetlightReport[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Synchronize reports and read state with localStorage & custom events
+  // Synchronize reports and read state with Supabase (live polling) and localStorage
   useEffect(() => {
+    // Immediate baseline from local storage for fast initial render
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setReports(getStoredReports());
 
@@ -49,12 +70,111 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
       console.error("Failed to read notification read state:", e);
     }
 
-    const handleReportsChange = () => {
-      setReports(getStoredReports());
-    };
+    let isMounted = true;
 
+    async function fetchReportsFromSupabase() {
+      try {
+        const client = getToken ? createClerkSupabaseClient(getToken) : defaultSupabase;
+        const { data, error } = await client
+          .from("reports")
+          .select(`
+            id,
+            reporter_name,
+            contact_info,
+            street_purok_landmark,
+            pole_tag_id,
+            problem_type,
+            description_hazard,
+            photo_url,
+            priority,
+            status,
+            assigned_team_id,
+            created_at,
+            barangays (
+              id,
+              name
+            ),
+            maintenance_teams (
+              id,
+              team_name
+            )
+          `)
+          .order("created_at", { ascending: false });
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error("Error fetching notification reports from Supabase:", error.message);
+          return;
+        }
+
+        if (data && isMounted) {
+          const mapped: StreetlightReport[] = (data as unknown as DbReportRow[]).map((row) => {
+            let barangayName = "Unknown";
+            if (row.barangays) {
+              if (Array.isArray(row.barangays) && row.barangays.length > 0) {
+                barangayName = row.barangays[0]?.name || "Unknown";
+              } else if (typeof row.barangays === "object" && "name" in row.barangays) {
+                barangayName = row.barangays.name || "Unknown";
+              }
+            }
+
+            let assignedTeamName = "Pending Dispatch";
+            if (row.maintenance_teams) {
+              if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
+                assignedTeamName = row.maintenance_teams[0]?.team_name || "Pending Dispatch";
+              } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
+                assignedTeamName = row.maintenance_teams.team_name || "Pending Dispatch";
+              }
+            }
+
+            let reportedDate = "";
+            if (row.created_at) {
+              try {
+                const dateObj = new Date(row.created_at);
+                reportedDate = isNaN(dateObj.getTime())
+                  ? String(row.created_at).split("T")[0]
+                  : dateObj.toISOString().split("T")[0];
+              } catch {
+                reportedDate = String(row.created_at).split("T")[0];
+              }
+            } else {
+              reportedDate = new Date().toISOString().split("T")[0];
+            }
+
+            return {
+              id: row.id,
+              residentName: row.reporter_name || "Anonymous",
+              contactInfo: row.contact_info || undefined,
+              barangay: barangayName,
+              landmark: row.street_purok_landmark || "",
+              poleNumber: row.pole_tag_id || "N/A",
+              issueType: row.problem_type || "Streetlight Issue",
+              description: row.description_hazard || "",
+              photoUrl: row.photo_url || undefined,
+              priority: (row.priority as PriorityLevel) || "High",
+              status: (row.status as ReportStatus) || "Pending",
+              assignedTeam: assignedTeamName,
+              reportedDate,
+            };
+          });
+
+          setReports(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to query notification reports from Supabase:", err);
+      }
+    }
+
+    // 1. Initial live fetch
+    fetchReportsFromSupabase();
+
+    // 2. Lightweight polling every 5 seconds for cross-browser / cross-session detection
+    const pollInterval = setInterval(fetchReportsFromSupabase, 5000);
+
+    // 3. Re-fetch immediately when window gains focus or local reports change
     const handleStorageChange = () => {
-      setReports(getStoredReports());
+      fetchReportsFromSupabase();
       try {
         const stored = localStorage.getItem(READ_NOTIFICATIONS_STORAGE_KEY);
         if (stored) {
@@ -68,14 +188,18 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
       }
     };
 
-    window.addEventListener("butuan-reports-changed", handleReportsChange);
+    window.addEventListener("focus", fetchReportsFromSupabase);
+    window.addEventListener("butuan-reports-changed", fetchReportsFromSupabase);
     window.addEventListener("storage", handleStorageChange);
 
     return () => {
-      window.removeEventListener("butuan-reports-changed", handleReportsChange);
+      isMounted = false;
+      clearInterval(pollInterval);
+      window.removeEventListener("focus", fetchReportsFromSupabase);
+      window.removeEventListener("butuan-reports-changed", fetchReportsFromSupabase);
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, []);
+  }, [getToken]);
 
   // Close dropdown on outside click or Escape key
   useEffect(() => {

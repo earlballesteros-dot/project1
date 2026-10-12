@@ -8,7 +8,6 @@ import {
   ClipboardList,
   MapPin,
   Users,
-  BarChart3,
   Settings,
   Lightbulb,
   ExternalLink,
@@ -79,12 +78,6 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
       href: "/admin/teams",
       icon: Users,
       active: pathname === "/admin/teams" || pathname === "/admin/crews",
-    },
-    {
-      title: "Analytics & Resolution",
-      href: "/admin/analytics",
-      icon: BarChart3,
-      active: pathname === "/admin/analytics",
     },
     {
       title: "System Settings",

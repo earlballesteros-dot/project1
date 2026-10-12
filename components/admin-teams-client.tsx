@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Users,
-  Wrench,
   CheckCircle2,
   AlertOctagon,
   MapPin,
@@ -48,20 +47,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "cn";
-import { type StreetlightReport } from "@/lib/mock-data";
-import { getStoredReports } from "@/lib/reports-store";
+import { type StreetlightReport, type PriorityLevel, type ReportStatus } from "@/lib/mock-data";
 import {
-  BUTUAN_MAINTENANCE_TEAMS,
   type MaintenanceTeamConfig,
+  mapDbTeamToConfig,
   SUPPORTED_12_BARANGAYS,
-  getStoredTeams,
   updateTeamAssignedBarangays,
-  resetTeamsToDefault,
   syncTeamToSupabase,
 } from "@/lib/teams-data";
 import { supabase } from "@/lib/supabase";
 
-export { BUTUAN_MAINTENANCE_TEAMS, type MaintenanceTeamConfig };
+export { type MaintenanceTeamConfig };
 
 export function AdminTeamsClient() {
   const [reports, setReports] = useState<StreetlightReport[]>([]);
@@ -70,6 +66,8 @@ export function AdminTeamsClient() {
   const [editingBarangays, setEditingBarangays] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isLoadingTeams, setIsLoadingTeams] = useState(true);
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
 
   // Dynamic active barangays from Supabase
   const [availableBarangays, setAvailableBarangays] = useState<string[]>([]);
@@ -101,23 +99,145 @@ export function AdminTeamsClient() {
     }
   }, []);
 
+  // Fetch actual maintenance teams from Supabase
+  const fetchTeams = useCallback(async () => {
+    setIsLoadingTeams(true);
+    try {
+      const { data, error } = await supabase
+        .from("maintenance_teams")
+        .select("*")
+        .order("team_code", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching maintenance teams from Supabase:", error.message);
+        setTeams([]);
+        return;
+      }
+
+      if (data) {
+        setTeams(data.map(mapDbTeamToConfig));
+      }
+    } catch (err) {
+      console.error("Failed to query maintenance teams:", err);
+      setTeams([]);
+    } finally {
+      setIsLoadingTeams(false);
+    }
+  }, []);
+
+  // Fetch actual incident reports from Supabase
+  const fetchReports = useCallback(async () => {
+    setIsLoadingReports(true);
+    try {
+      const { data, error } = await supabase
+        .from("reports")
+        .select(`
+          id,
+          reporter_name,
+          contact_info,
+          street_purok_landmark,
+          pole_tag_id,
+          problem_type,
+          description_hazard,
+          photo_url,
+          priority,
+          status,
+          assigned_team_id,
+          created_at,
+          barangays (
+            id,
+            name
+          ),
+          maintenance_teams (
+            id,
+            team_name
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching reports for maintenance teams:", error.message);
+        return;
+      }
+
+      if (data) {
+        const mapped: StreetlightReport[] = data.map((row: any) => {
+          let barangayName = "Unknown";
+          if (row.barangays) {
+            if (Array.isArray(row.barangays) && row.barangays.length > 0) {
+              barangayName = row.barangays[0]?.name || "Unknown";
+            } else if (typeof row.barangays === "object" && "name" in row.barangays) {
+              barangayName = row.barangays.name || "Unknown";
+            }
+          }
+
+          let assignedTeamName = "";
+          let assignedTeamId: string | null = row.assigned_team_id || null;
+          if (row.maintenance_teams) {
+            if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
+              assignedTeamName = row.maintenance_teams[0]?.team_name || "";
+              if (!assignedTeamId) assignedTeamId = row.maintenance_teams[0]?.id || null;
+            } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
+              assignedTeamName = row.maintenance_teams.team_name || "";
+              if (!assignedTeamId) assignedTeamId = row.maintenance_teams.id || null;
+            }
+          }
+
+          let reportedDate = "";
+          if (row.created_at) {
+            try {
+              const dateObj = new Date(row.created_at);
+              reportedDate = isNaN(dateObj.getTime())
+                ? String(row.created_at).split("T")[0]
+                : dateObj.toISOString().split("T")[0];
+            } catch {
+              reportedDate = String(row.created_at).split("T")[0];
+            }
+          } else {
+            reportedDate = new Date().toISOString().split("T")[0];
+          }
+
+          return {
+            id: row.id,
+            residentName: row.reporter_name || "Anonymous",
+            contactInfo: row.contact_info || undefined,
+            barangay: barangayName,
+            landmark: row.street_purok_landmark || "",
+            poleNumber: row.pole_tag_id || "N/A",
+            issueType: row.problem_type || "Streetlight Issue",
+            description: row.description_hazard || "",
+            photoUrl: row.photo_url || undefined,
+            priority: (row.priority as PriorityLevel) || "High",
+            status: (row.status as ReportStatus) || "Pending",
+            assignedTeam: assignedTeamName,
+            assignedTeamId,
+            reportedDate,
+          };
+        });
+
+        setReports(mapped);
+      }
+    } catch (err) {
+      console.error("Failed to query reports for maintenance teams:", err);
+    } finally {
+      setIsLoadingReports(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchActiveBarangays();
-  }, [fetchActiveBarangays]);
+    fetchTeams();
+    fetchReports();
+  }, [fetchActiveBarangays, fetchTeams, fetchReports]);
 
   // Synchronize reports, teams, and barangays with system events
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setReports(getStoredReports());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTeams(getStoredTeams());
-
     const handleReportsChange = () => {
-      setReports(getStoredReports());
+      fetchReports();
     };
 
     const handleTeamsChange = () => {
-      setTeams(getStoredTeams());
+      fetchTeams();
     };
 
     const handleBarangaysChange = () => {
@@ -127,6 +247,7 @@ export function AdminTeamsClient() {
     window.addEventListener("butuan-reports-changed", handleReportsChange);
     window.addEventListener("butuan-teams-changed", handleTeamsChange);
     window.addEventListener("butuan-barangays-changed", handleBarangaysChange);
+    window.addEventListener("focus", handleReportsChange);
     window.addEventListener("storage", () => {
       handleReportsChange();
       handleTeamsChange();
@@ -137,25 +258,41 @@ export function AdminTeamsClient() {
       window.removeEventListener("butuan-reports-changed", handleReportsChange);
       window.removeEventListener("butuan-teams-changed", handleTeamsChange);
       window.removeEventListener("butuan-barangays-changed", handleBarangaysChange);
+      window.removeEventListener("focus", handleReportsChange);
       window.removeEventListener("storage", () => {
         handleReportsChange();
         handleTeamsChange();
         handleBarangaysChange();
       });
     };
-  }, [fetchActiveBarangays]);
+  }, [fetchActiveBarangays, fetchTeams, fetchReports]);
 
   const handleRefresh = () => {
-    setReports(getStoredReports());
-    setTeams(getStoredTeams());
+    fetchReports();
+    fetchTeams();
     fetchActiveBarangays();
   };
 
   // Derive workload for each maintenance team dynamically from current reports
   const teamWorkloadList = teams.map((team) => {
-    const assignedReports = reports.filter((r) =>
-      r.assignedTeam?.toLowerCase().includes(team.keyword.toLowerCase())
-    );
+    const assignedReports = reports.filter((r) => {
+      if (r.assignedTeamId) {
+        return r.assignedTeamId === team.id;
+      }
+      if (
+        !r.assignedTeam ||
+        r.assignedTeam.toLowerCase().includes("pending dispatch") ||
+        r.assignedTeam.toLowerCase() === "unassigned" ||
+        r.assignedTeam === ""
+      ) {
+        return false;
+      }
+      return (
+        r.assignedTeam.toLowerCase() === team.name.toLowerCase() ||
+        (team.teamCode && r.assignedTeam.toLowerCase() === team.teamCode.toLowerCase()) ||
+        (team.keyword && r.assignedTeam.toLowerCase().includes(team.keyword.toLowerCase()))
+      );
+    });
 
     const inProgressCount = assignedReports.filter((r) => r.status === "In Progress").length;
     const pendingCount = assignedReports.filter((r) => r.status === "Pending").length;
@@ -194,9 +331,19 @@ export function AdminTeamsClient() {
           : "border-emerald-500/50 text-emerald-600 dark:text-emerald-400";
     }
 
+    // Distinct barangays associated with each team's currently assigned incidents
+    const assignedIncidentBarangays = Array.from(
+      new Set(
+        assignedReports
+          .map((r) => r.barangay?.trim())
+          .filter((b): b is string => Boolean(b && b.toLowerCase() !== "unknown"))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
     return {
       ...team,
       assignedReports,
+      assignedIncidentBarangays,
       inProgressCount,
       pendingCount,
       resolvedCount,
@@ -220,7 +367,10 @@ export function AdminTeamsClient() {
   const unassignedReports = reports.filter(
     (r) =>
       r.status !== "Resolved" &&
-      (!r.assignedTeam || r.assignedTeam.toLowerCase().includes("pending dispatch"))
+      (!r.assignedTeamId ||
+        !r.assignedTeam ||
+        r.assignedTeam.toLowerCase().includes("pending dispatch") ||
+        r.assignedTeam.toLowerCase() === "unassigned")
   );
 
   // Selected team object currently being viewed / edited in Dialog
@@ -259,11 +409,8 @@ export function AdminTeamsClient() {
 
   const handleResetToBaselineRoster = () => {
     if (!selectedTeam) return;
-    const defaultTeam = BUTUAN_MAINTENANCE_TEAMS.find((t) => t.id === selectedTeam.id);
-    if (defaultTeam) {
-      setEditingBarangays([...defaultTeam.assignedBarangays]);
-      setSaveSuccess(false);
-    }
+    setEditingBarangays([...selectedTeam.assignedBarangays]);
+    setSaveSuccess(false);
   };
 
   const handleSaveBarangayAssignments = async () => {
@@ -275,7 +422,7 @@ export function AdminTeamsClient() {
       setTeams(updatedTeams);
       setSaveSuccess(true);
 
-      // Async sync to Supabase (prepared for when database table is available)
+      // Async sync to Supabase if permissions allow
       const currentUpdated = updatedTeams.find((t) => t.id === selectedTeam.id);
       if (currentUpdated) {
         void syncTeamToSupabase(currentUpdated);
@@ -290,17 +437,9 @@ export function AdminTeamsClient() {
     }
   };
 
-  const handleRestoreAllDefaults = () => {
-    if (confirm("Reset all 4 maintenance teams to the default baseline barangay assignments?")) {
-      const reset = resetTeamsToDefault();
-      setTeams(reset);
-      if (selectedTeamId) {
-        const found = reset.find((t) => t.id === selectedTeamId);
-        if (found) {
-          setEditingBarangays([...found.assignedBarangays]);
-        }
-      }
-    }
+  const handleRestoreAllDefaults = async () => {
+    await fetchTeams();
+    await fetchReports();
   };
 
   return (
@@ -342,10 +481,10 @@ export function AdminTeamsClient() {
             size="sm"
             className="text-xs"
             onClick={handleRestoreAllDefaults}
-            title="Restore baseline 3-barangay assignments for all 4 teams"
+            title="Reload maintenance teams and workload from database"
           >
             <Undo2 data-icon="inline-start" />
-            Reset Roster Defaults
+            Reload Roster Data
           </Button>
           <Link href="/admin/map">
             <Button variant="outline" size="sm" className="text-xs">
@@ -476,26 +615,48 @@ export function AdminTeamsClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {teamWorkloadList.map((t) => (
-                <TableRow
-                  key={t.id}
-                  onClick={() => handleOpenTeam(t)}
-                  className="hover:bg-muted/60 cursor-pointer transition-colors group"
-                >
-                  {/* Team Name & Code */}
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-xs text-foreground flex items-center gap-1.5 group-hover:text-primary transition-colors">
-                        <Users className="size-3.5 text-primary shrink-0" />
-                        {t.name}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
-                          {t.id}
-                        </Badge>
-                      </div>
+              {isLoadingTeams ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2">
+                      <RotateCw className="size-3.5 animate-spin text-primary" />
+                      <span>Loading maintenance teams from database...</span>
                     </div>
                   </TableCell>
+                </TableRow>
+              ) : teamWorkloadList.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                      <Users className="size-8 text-muted-foreground/50" />
+                      <span className="font-semibold text-sm text-foreground">No Maintenance Teams Found</span>
+                      <p className="text-xs text-muted-foreground text-center">
+                        No active maintenance teams are registered in the Supabase database. Please add maintenance team records to public.maintenance_teams to assign incidents and track crew workloads.
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                teamWorkloadList.map((t) => (
+                  <TableRow
+                    key={t.id}
+                    onClick={() => handleOpenTeam(t)}
+                    className="hover:bg-muted/60 cursor-pointer transition-colors group"
+                  >
+                    {/* Team Name & Code */}
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <span className="font-semibold text-xs text-foreground flex items-center gap-1.5 group-hover:text-primary transition-colors">
+                          <Users className="size-3.5 text-primary shrink-0" />
+                          {t.name}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                            {t.teamCode || t.id.slice(0, 8)}
+                          </Badge>
+                        </div>
+                      </div>
+                    </TableCell>
 
                   {/* Specialization */}
                   <TableCell>
@@ -515,12 +676,12 @@ export function AdminTeamsClient() {
                     </div>
                   </TableCell>
 
-                  {/* Assigned Barangays */}
+                  {/* Assigned Barangay / Area (Distinct barangays from assigned incidents) */}
                   <TableCell>
                     <div className="flex flex-col gap-1 max-w-[260px]">
-                      {t.assignedBarangays.length > 0 ? (
+                      {t.assignedIncidentBarangays.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {t.assignedBarangays.map((brgy) => (
+                          {t.assignedIncidentBarangays.map((brgy) => (
                             <Badge
                               key={brgy}
                               variant="secondary"
@@ -532,7 +693,7 @@ export function AdminTeamsClient() {
                         </div>
                       ) : (
                         <span className="text-[11px] text-muted-foreground italic">
-                          No barangays assigned
+                          No active incident areas
                         </span>
                       )}
                     </div>
@@ -596,7 +757,7 @@ export function AdminTeamsClient() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
+              )))}
             </TableBody>
           </Table>
         </CardContent>
@@ -611,182 +772,6 @@ export function AdminTeamsClient() {
         </CardFooter>
       </Card>
 
-      {/* Active Team Workload Cards Detail */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-base font-semibold">Maintenance Team Units</h2>
-            <p className="text-xs text-muted-foreground">
-              Click any unit card to open team details and assign coverage areas.
-            </p>
-          </div>
-          <span className="text-xs text-muted-foreground font-mono">
-            {teams.length} Active Crews
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {teamWorkloadList.map((team) => (
-            <Card
-              key={team.id}
-              onClick={() => handleOpenTeam(team)}
-              className="flex flex-col cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
-            >
-              <CardHeader className="pb-3 border-b">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                      <Wrench className="size-4.5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
-                          {team.name}
-                        </CardTitle>
-                        <Badge variant="outline" className="text-[10px] font-mono">
-                          {team.id}
-                        </Badge>
-                      </div>
-                      <CardDescription className="text-[11px] flex items-center gap-1.5 flex-wrap mt-0.5">
-                        <span className="font-medium text-foreground/80">{team.specialization}</span>
-                        <span>•</span>
-                        <span>Lead: {team.lead}</span>
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge
-                      variant={team.statusText === "Dispatched in Field" ? "secondary" : "outline"}
-                      className="text-[10px]"
-                    >
-                      {team.statusText}
-                    </Badge>
-                    <Badge variant="outline" className={`text-[10px] ${team.availabilityBadgeClass}`}>
-                      {team.availabilityText}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="pt-4 flex-1">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-start justify-between text-xs gap-2">
-                    <span className="text-muted-foreground flex items-center gap-1 shrink-0">
-                      <MapPin className="size-3.5 text-primary" />
-                      Assigned Coverage:
-                    </span>
-                    <div className="flex flex-wrap gap-1 justify-end">
-                      {team.assignedBarangays.length > 0 ? (
-                        team.assignedBarangays.map((b) => (
-                          <Badge key={b} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                            {b}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground italic text-xs">Unassigned</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <Truck className="size-3.5 text-primary" />
-                      Assigned Vehicle:
-                    </span>
-                    <span className="font-mono text-xs font-medium text-foreground">{team.vehicle}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <Phone className="size-3.5 text-primary" />
-                      Direct Contact:
-                    </span>
-                    <span className="text-xs font-mono">{team.contact}</span>
-                  </div>
-
-                  {/* Current Workload calculation display */}
-                  <div className="pt-2 border-t">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                        <Activity className="size-3.5 text-primary" />
-                        Current Workload ({team.activeWorkload} Active)
-                      </span>
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground">
-                        <span className="text-amber-600 dark:text-amber-400 font-semibold">{team.inProgressCount} in progress</span>
-                        <span>•</span>
-                        <span className="text-destructive font-semibold">{team.pendingCount} pending</span>
-                      </div>
-                    </div>
-
-                    {team.assignedReports.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
-                        No active incident reports currently assigned to this team.
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                        {team.assignedReports.map((r) => (
-                          <div
-                            key={r.id}
-                            className="flex items-center justify-between rounded-lg border p-2 text-xs bg-muted/20"
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-mono font-semibold text-foreground">
-                                {r.id}
-                              </span>
-                              <span className="text-[11px] text-muted-foreground">
-                                Brgy. {r.barangay} • {r.issueType}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Badge
-                                variant={r.priority === "Emergency" ? "destructive" : "outline"}
-                                className="text-[10px]"
-                              >
-                                {r.priority}
-                              </Badge>
-                              <Badge
-                                variant={
-                                  r.status === "Resolved"
-                                    ? "outline"
-                                    : r.status === "In Progress"
-                                    ? "secondary"
-                                    : "destructive"
-                                }
-                                className="text-[10px]"
-                              >
-                                {r.status}
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-
-              <CardFooter className="border-t pt-3 pb-3 flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground">
-                  {team.assignedBarangays.length} of {availableBarangays.length} Barangays Assigned
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 gap-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenTeam(team);
-                  }}
-                >
-                  <MapPin className="size-3 text-primary" />
-                  Manage Barangays
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </div>
-
       {/* Team Details & Barangay Assignment shadcn/ui Dialog */}
       <Dialog
         open={!!selectedTeamId}
@@ -796,7 +781,7 @@ export function AdminTeamsClient() {
           <DialogHeader>
             <div className="flex items-center justify-between pr-6 flex-wrap gap-2">
               <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
-                {selectedTeam?.id}
+                {selectedTeam?.teamCode || selectedTeam?.id}
               </Badge>
               <div className="flex items-center gap-1.5">
                 <Badge
@@ -833,7 +818,7 @@ export function AdminTeamsClient() {
                   <span className="font-semibold text-foreground text-sm">{selectedTeam.lead}</span>
                   <span className="text-muted-foreground flex items-center gap-1 mt-0.5">
                     <Phone className="size-3 text-primary/80" />
-                    <span className="font-mono">{selectedTeam.contact}</span>
+                    <span className="font-mono">{selectedTeam.contact || "Dispatch via Central Radio"}</span>
                   </span>
                 </div>
 

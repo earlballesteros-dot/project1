@@ -22,7 +22,7 @@ import {
   Sparkles,
   Camera,
   Loader2,
-  Trash2,
+  Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -112,7 +112,7 @@ export default function ResidentProblemReportingPage() {
   // Incident reports state - strictly sourced from Supabase for currently logged-in Clerk resident
   const [reportsList, setReportsList] = useState<StreetlightReport[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(true);
-  const [hiddenReportIds, setHiddenReportIds] = useState<string[]>(() => {
+  const [archivedReportIds, setArchivedReportIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
       const globalStored = localStorage.getItem("butuan_resident_hidden_reports");
@@ -125,7 +125,8 @@ export default function ResidentProblemReportingPage() {
     }
     return [];
   });
-  const [reportToRemove, setReportToRemove] = useState<StreetlightReport | null>(null);
+  const [reportToArchive, setReportToArchive] = useState<StreetlightReport | null>(null);
+  const [historyTab, setHistoryTab] = useState<"active" | "archived">("active");
 
   // Fetch only reports submitted by this authenticated resident account from Supabase
   const fetchResidentReports = useCallback(async () => {
@@ -221,7 +222,7 @@ export default function ResidentProblemReportingPage() {
     }
   }, [isLoaded, fetchResidentReports]);
 
-  // Synchronize resident's hidden reports from localStorage without resetting
+  // Synchronize resident's archived reports from localStorage without resetting
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -246,10 +247,10 @@ export default function ResidentProblemReportingPage() {
       }
 
       if (loadedIds.length > 0) {
-        setHiddenReportIds((prev) => Array.from(new Set([...prev, ...loadedIds])));
+        setArchivedReportIds((prev) => Array.from(new Set([...prev, ...loadedIds])));
       }
     } catch (e) {
-      console.error("Error loading resident hidden reports from localStorage:", e);
+      console.error("Error loading resident archived reports from localStorage:", e);
     }
   }, [userId]);
 
@@ -495,6 +496,11 @@ export default function ResidentProblemReportingPage() {
       // Re-fetch reports from Supabase to guarantee synchronized database state
       fetchResidentReports();
 
+      // Dispatch event for other components in same window
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("butuan-reports-changed"));
+      }
+
       // Show immediate submission success popup modal
       setShowSuccessDialog(true);
 
@@ -520,27 +526,45 @@ export default function ResidentProblemReportingPage() {
   // Helper to determine if a report belongs to the resident (all reports in list belong to authenticated user)
   const isOwnReport = (_report: StreetlightReport) => true;
 
-  // Safe removal from resident history (does NOT hard-delete from Supabase or modify DB schema)
-  const handleConfirmRemove = () => {
-    if (!reportToRemove) return;
-    const nextHidden = Array.from(new Set([...hiddenReportIds, reportToRemove.id]));
-    setHiddenReportIds(nextHidden);
+  // Safe archive action for resident history (does NOT hard-delete from Supabase or modify DB schema)
+  const handleConfirmArchive = () => {
+    if (!reportToArchive) return;
+    const nextArchived = Array.from(new Set([...archivedReportIds, reportToArchive.id]));
+    setArchivedReportIds(nextArchived);
     try {
       if (userId) {
-        localStorage.setItem(`butuan_resident_hidden_reports_${userId}`, JSON.stringify(nextHidden));
+        localStorage.setItem(`butuan_resident_hidden_reports_${userId}`, JSON.stringify(nextArchived));
       }
-      localStorage.setItem("butuan_resident_hidden_reports", JSON.stringify(nextHidden));
+      localStorage.setItem("butuan_resident_hidden_reports", JSON.stringify(nextArchived));
     } catch (e) {
-      console.error("Failed to persist hidden report ID:", e);
+      console.error("Failed to persist archived report ID:", e);
     }
-    setReportToRemove(null);
+    setReportToArchive(null);
   };
 
-  const visibleReports = reportsList.filter((r) => !hiddenReportIds.includes(r.id));
-  const activeReportsCount = visibleReports.filter(
+  // Restore archived report back to active history
+  const handleRestoreReport = (reportId: string) => {
+    const nextArchived = archivedReportIds.filter((id) => id !== reportId);
+    setArchivedReportIds(nextArchived);
+    try {
+      if (userId) {
+        localStorage.setItem(`butuan_resident_hidden_reports_${userId}`, JSON.stringify(nextArchived));
+      }
+      localStorage.setItem("butuan_resident_hidden_reports", JSON.stringify(nextArchived));
+    } catch (e) {
+      console.error("Failed to persist restored report ID:", e);
+    }
+  };
+
+  const activeReports = reportsList.filter((r) => !archivedReportIds.includes(r.id));
+  const archivedReports = reportsList.filter((r) => archivedReportIds.includes(r.id));
+  const displayedReports = historyTab === "active" ? activeReports : archivedReports;
+
+  const activeReportsCount = activeReports.filter(
     (r) => r.status === "Pending" || r.status === "In Progress"
   ).length;
-  const resolvedReportsCount = visibleReports.filter((r) => r.status === "Resolved").length;
+  const resolvedReportsCount = activeReports.filter((r) => r.status === "Resolved").length;
+  const archivedReportsCount = archivedReports.length;
 
   return (
     <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col gap-8">
@@ -567,7 +591,7 @@ export default function ResidentProblemReportingPage() {
           <a href="#reports">
             <Button variant="outline" size="sm" className="text-xs">
               <FileText data-icon="inline-start" />
-              View My Reports ({visibleReports.length})
+              View My Reports ({activeReports.length})
             </Button>
           </a>
         </div>
@@ -964,13 +988,18 @@ export default function ResidentProblemReportingPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs font-normal">
               Active: {activeReportsCount}
             </Badge>
             <Badge variant="outline" className="text-xs font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
               Resolved: {resolvedReportsCount}
             </Badge>
+            {archivedReportsCount > 0 && (
+              <Badge variant="outline" className="text-xs font-normal border-amber-500/40 text-amber-600 dark:text-amber-400">
+                Archived: {archivedReportsCount}
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -985,7 +1014,7 @@ export default function ResidentProblemReportingPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-heading">
-                {visibleReports.length}
+                {reportsList.length}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Recorded under your citizen profile
@@ -1031,16 +1060,40 @@ export default function ResidentProblemReportingPage() {
         {/* Reports Table Card */}
         <Card>
           <CardHeader className="border-b">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <CardTitle className="text-base">Tracked Streetlight Problem Reports</CardTitle>
+                <CardTitle className="text-base">
+                  {historyTab === "active" ? "Tracked Streetlight Problem Reports" : "Archived Incident Reports"}
+                </CardTitle>
                 <CardDescription className="text-xs">
-                  Real-time status updates from City Central Dispatch.
+                  {historyTab === "active"
+                    ? "Real-time status updates from City Central Dispatch."
+                    : "Archived reports hidden from active tracking. You can restore them anytime."}
                 </CardDescription>
               </div>
-              <Badge variant="secondary" className="text-xs">
-                {visibleReports.length} Total
-              </Badge>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+                  <Button
+                    type="button"
+                    variant={historyTab === "active" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setHistoryTab("active")}
+                    className="h-7 text-xs font-medium px-2.5 shadow-2xs"
+                  >
+                    Active ({activeReports.length})
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={historyTab === "archived" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setHistoryTab("archived")}
+                    className="h-7 text-xs font-medium px-2.5 shadow-2xs"
+                  >
+                    <Archive className="size-3 mr-1" />
+                    Archived ({archivedReportsCount})
+                  </Button>
+                </div>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -1066,14 +1119,16 @@ export default function ResidentProblemReportingPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ) : visibleReports.length === 0 ? (
+                  ) : displayedReports.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-xs text-muted-foreground">
-                        No reports found in your history.
+                        {historyTab === "active"
+                          ? "No active reports found in your history."
+                          : "No archived reports found."}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    visibleReports.map((report) => (
+                    displayedReports.map((report) => (
                       <TableRow key={report.id}>
                         <TableCell className="font-mono text-xs font-semibold">
                           {report.id}
@@ -1110,17 +1165,31 @@ export default function ResidentProblemReportingPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           {isOwnReport(report) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setReportToRemove(report)}
-                              className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              title="Remove from my history"
-                              aria-label={`Remove report ${report.id} from history`}
-                            >
-                              <Trash2 className="size-3.5 mr-1" />
-                              Remove
-                            </Button>
+                            historyTab === "active" ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setReportToArchive(report)}
+                                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                                title="Archive report from active history"
+                                aria-label={`Archive report ${report.id}`}
+                              >
+                                <Archive className="size-3.5 mr-1" />
+                                Archive
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRestoreReport(report.id)}
+                                className="h-7 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                                title="Restore report to active history"
+                                aria-label={`Restore report ${report.id} to active history`}
+                              >
+                                <RotateCcw className="size-3.5 mr-1" />
+                                Restore
+                              </Button>
+                            )
                           ) : (
                             <span className="text-xs text-muted-foreground px-2">—</span>
                           )}
@@ -1133,7 +1202,9 @@ export default function ResidentProblemReportingPage() {
             </div>
           </CardContent>
           <CardFooter className="border-t py-3 text-xs text-muted-foreground flex items-center justify-between">
-            <span>Showing recent citizen reports • {visibleReports.length} {visibleReports.length === 1 ? "report" : "reports"} recorded</span>
+            <span>
+              {historyTab === "active" ? "Active citizen reports" : "Archived citizen reports"} • {displayedReports.length} {displayedReports.length === 1 ? "report" : "reports"}
+            </span>
             <span className="text-xs text-muted-foreground">
               Butuan City Engineering Maintenance Division
             </span>
@@ -1227,22 +1298,22 @@ export default function ResidentProblemReportingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Remove from Resident History Confirmation Dialog */}
-      <Dialog open={!!reportToRemove} onOpenChange={(open) => !open && setReportToRemove(null)}>
+      {/* Archive Incident Report Dialog */}
+      <Dialog open={!!reportToArchive} onOpenChange={(open) => !open && setReportToArchive(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">
-              Remove from My History
+              Archive Incident Report
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Are you sure you want to remove report <strong className="font-mono text-foreground">{reportToRemove?.id}</strong> from your resident history?
+              Are you sure you want to archive report <strong className="font-mono text-foreground">{reportToArchive?.id}</strong> from your active history?
             </DialogDescription>
           </DialogHeader>
 
           <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex items-start gap-2">
-            <AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+            <Archive className="size-4 text-primary shrink-0 mt-0.5" />
             <p>
-              This only removes the ticket from your personal resident history view. The official incident record in City Central Dispatch remains active and will NOT be deleted.
+              Archiving hides this ticket from your active history view while preserving the record. You can view archived reports and restore them at any time. The official record in City Central Dispatch remains active.
             </p>
           </div>
 
@@ -1251,19 +1322,20 @@ export default function ResidentProblemReportingPage() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setReportToRemove(null)}
+              onClick={() => setReportToArchive(null)}
               className="text-xs"
             >
               Cancel
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="default"
               size="sm"
-              onClick={handleConfirmRemove}
+              onClick={handleConfirmArchive}
               className="text-xs"
             >
-              Remove from my history
+              <Archive className="size-3.5 mr-1" />
+              Archive report
             </Button>
           </DialogFooter>
         </DialogContent>

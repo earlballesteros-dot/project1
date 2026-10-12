@@ -14,6 +14,7 @@ export interface StreetlightReport {
   status: ReportStatus;
   priority: PriorityLevel;
   assignedTeam: string;
+  assignedTeamId?: string | null;
   residentName: string;
 }
 

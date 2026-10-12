@@ -1,5 +1,6 @@
 export interface MaintenanceTeamConfig {
   id: string;
+  teamCode?: string;
   name: string;
   keyword: string;
   specialization: string;
@@ -29,91 +30,65 @@ export const SUPPORTED_12_BARANGAYS = [
 
 export type SupportedBarangay = (typeof SUPPORTED_12_BARANGAYS)[number];
 
-// Baseline maintenance team roster covering all 12 supported Butuan City barangays
-export const BUTUAN_MAINTENANCE_TEAMS: MaintenanceTeamConfig[] = [
-  {
-    id: "BXU-CREW-01",
-    name: "Team Alpha (City Engineering)",
-    keyword: "Team Alpha",
-    specialization: "Substation & High-Voltage Systems",
-    lead: "Engr. Mateo Morales",
-    contact: "0917 882 1044",
-    assignedBarangays: ["Ampayon", "Baan Riverside", "Pangabugan"],
-    vehicle: "Boom Truck #04",
-    status: "Dispatched in Field",
-    availability: "Engaged (Normal)",
-  },
-  {
-    id: "BXU-CREW-02",
-    name: "Team Bravo (Linemen)",
-    keyword: "Team Bravo",
-    specialization: "Overhead Lines & Luminaire Repairs",
-    lead: "Foreman Jerry Alcantara",
-    contact: "0920 551 3920",
-    assignedBarangays: ["Doongan", "Holy Redeemer", "Golden Ribbon"],
-    vehicle: "Bucket Truck #02",
-    status: "Dispatched in Field",
-    availability: "Engaged (Normal)",
-  },
-  {
-    id: "BXU-CREW-03",
-    name: "Team Charlie",
-    keyword: "Team Charlie",
-    specialization: "Photocell Sensors & Day-Burn Control",
-    lead: "Sr. Lineman Rolando Dizon",
-    contact: "0918 334 9021",
-    assignedBarangays: ["Bancasi", "Bonbon", "Libertad"],
-    vehicle: "Ladder Service Van #07",
-    status: "Standby",
-    availability: "Available for Dispatch",
-  },
-  {
-    id: "BXU-CREW-04",
-    name: "Emergency Response Unit",
-    keyword: "Emergency",
-    specialization: "Hazard Isolation & Ground Faults",
-    lead: "Capt. Aris Villanueva",
-    contact: "0939 990 4411",
-    assignedBarangays: ["Villa Kananga", "Ong Yiu", "San Vicente"],
-    vehicle: "Rapid Intervention Van #01",
-    status: "Dispatched in Field",
-    availability: "Engaged (Normal)",
-  },
-];
+// No hardcoded sample or demonstration teams; Supabase maintenance_teams is the source of truth
+export const BUTUAN_MAINTENANCE_TEAMS: MaintenanceTeamConfig[] = [];
 
 const STORAGE_KEY = "butuan_maintenance_teams_roster";
 
 /**
- * Retrieve maintenance teams from localStorage (falls back to BUTUAN_MAINTENANCE_TEAMS).
+ * Map a raw database row from public.maintenance_teams to MaintenanceTeamConfig.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapDbTeamToConfig(row: any): MaintenanceTeamConfig {
+  const teamName = row.team_name || row.name || "Unnamed Team";
+  const assignedBarangays = row.barangay_area
+    ? String(row.barangay_area)
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+    : Array.isArray(row.assigned_barangays)
+    ? row.assigned_barangays
+    : [];
+
+  const keyword = teamName.includes(" (")
+    ? teamName.split(" (")[0].trim()
+    : teamName;
+
+  return {
+    id: row.id,
+    teamCode: row.team_code || row.id,
+    name: teamName,
+    keyword,
+    specialization: row.specialization || "General Servicing",
+    lead: row.lead_name || row.lead || "Unassigned Lead",
+    contact: row.contact || "",
+    assignedBarangays,
+    vehicle: row.vehicle || "Unassigned Vehicle",
+    status: row.status || "Standby",
+    availability: row.availability || "Available for Dispatch",
+  };
+}
+
+/**
+ * Retrieve cached maintenance teams from localStorage, or return empty array if none.
  */
 export function getStoredTeams(): MaintenanceTeamConfig[] {
   if (typeof window === "undefined") {
-    return BUTUAN_MAINTENANCE_TEAMS;
+    return [];
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(BUTUAN_MAINTENANCE_TEAMS));
-      return BUTUAN_MAINTENANCE_TEAMS;
+      return [];
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return BUTUAN_MAINTENANCE_TEAMS.map((defaultTeam) => {
-        const found = parsed.find((p: MaintenanceTeamConfig) => p.id === defaultTeam.id);
-        if (!found) return defaultTeam;
-        return {
-          ...defaultTeam,
-          ...found,
-          assignedBarangays: Array.isArray(found.assignedBarangays)
-            ? found.assignedBarangays
-            : defaultTeam.assignedBarangays,
-        };
-      });
+    if (Array.isArray(parsed)) {
+      return parsed;
     }
-    return BUTUAN_MAINTENANCE_TEAMS;
+    return [];
   } catch (e) {
     console.error("Error reading stored maintenance teams from localStorage:", e);
-    return BUTUAN_MAINTENANCE_TEAMS;
+    return [];
   }
 }
 
@@ -134,7 +109,7 @@ export function saveStoredTeams(teams: MaintenanceTeamConfig[]): MaintenanceTeam
 }
 
 /**
- * Assign or reassign barangays to a specific maintenance team.
+ * Assign or reassign barangays to a specific maintenance team in local cache.
  * When reassignExclusively is true, reassigned barangays are removed from any other team.
  */
 export function updateTeamAssignedBarangays(
@@ -166,36 +141,31 @@ export function updateTeamAssignedBarangays(
  * Reset all teams to default baseline roster and barangay assignments.
  */
 export function resetTeamsToDefault(): MaintenanceTeamConfig[] {
-  return saveStoredTeams(BUTUAN_MAINTENANCE_TEAMS);
+  return saveStoredTeams([]);
 }
 
 /**
  * Supabase Data Access Layer for Maintenance Teams.
- * When Supabase table `maintenance_teams` is created, these functions
- * provide direct synchronization between the client and Supabase DB.
+ * Queries public.maintenance_teams and caches the result.
  */
 export async function fetchTeamsFromSupabase(): Promise<MaintenanceTeamConfig[] | null> {
   try {
     const { supabase } = await import("./supabase");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await supabase.from("maintenance_teams").select("*");
+    const { data, error } = await supabase
+      .from("maintenance_teams")
+      .select("*")
+      .order("team_code", { ascending: true });
+
     if (error || !data) {
+      console.error("Error querying maintenance_teams from Supabase:", error?.message);
       return null;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      keyword: row.keyword,
-      specialization: row.specialization,
-      lead: row.lead,
-      contact: row.contact,
-      assignedBarangays: Array.isArray(row.assigned_barangays) ? row.assigned_barangays : [],
-      vehicle: row.vehicle,
-      status: row.status,
-      availability: row.availability,
-    }));
-  } catch {
+
+    const mapped = data.map(mapDbTeamToConfig);
+    saveStoredTeams(mapped);
+    return mapped;
+  } catch (err) {
+    console.error("Failed to query maintenance_teams:", err);
     return null;
   }
 }
@@ -203,19 +173,12 @@ export async function fetchTeamsFromSupabase(): Promise<MaintenanceTeamConfig[] 
 export async function syncTeamToSupabase(team: MaintenanceTeamConfig): Promise<boolean> {
   try {
     const { supabase } = await import("./supabase");
-    const { error } = await supabase.from("maintenance_teams").upsert({
-      id: team.id,
-      name: team.name,
-      keyword: team.keyword,
-      specialization: team.specialization,
-      lead: team.lead,
-      contact: team.contact,
-      assigned_barangays: team.assignedBarangays,
-      vehicle: team.vehicle,
-      status: team.status,
-      availability: team.availability,
-      updated_at: new Date().toISOString(),
-    });
+    const { error } = await supabase
+      .from("maintenance_teams")
+      .update({
+        barangay_area: team.assignedBarangays.join(", "),
+      })
+      .eq("id", team.id);
     return !error;
   } catch {
     return false;
