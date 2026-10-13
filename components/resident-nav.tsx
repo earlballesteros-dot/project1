@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Lightbulb, ArrowLeft, Shield, Menu, X } from "lucide-react";
+import { Lightbulb, ArrowLeft, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -54,10 +54,6 @@ export function ResidentNav() {
           </Link>
           <Link href="/#live-status" className="text-muted-foreground hover:text-foreground transition-colors">
             Public Status
-          </Link>
-          <Link href="/admin" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-            <Shield className="size-3.5 text-muted-foreground" />
-            Switch to Admin View
           </Link>
         </nav>
 
@@ -113,14 +109,6 @@ export function ResidentNav() {
               className="py-1.5 text-muted-foreground hover:text-foreground"
             >
               Public Status
-            </Link>
-            <Link
-              href="/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className="py-1.5 text-muted-foreground hover:text-foreground flex items-center gap-1.5"
-            >
-              <Shield className="size-4 text-primary" />
-              Switch to Admin View
             </Link>
             <div className="pt-2 border-t">
               <Link href="/" onClick={() => setMobileMenuOpen(false)}>
