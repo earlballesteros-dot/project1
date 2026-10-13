@@ -67,6 +67,8 @@ export default function AdminDashboard() {
               status,
               assigned_team_id,
               created_at,
+              is_archived,
+              is_deleted,
               barangays (
                 id,
                 name
@@ -76,6 +78,8 @@ export default function AdminDashboard() {
                 team_name
               )
             `)
+            .eq("is_archived", false)
+            .eq("is_deleted", false)
             .order("created_at", { ascending: false }),
           supabase
             .from("barangays")

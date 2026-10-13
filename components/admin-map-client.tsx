@@ -171,6 +171,8 @@ export function AdminMapClient() {
             team_name
           )
         `)
+        .eq("is_archived", false)
+        .eq("is_deleted", false)
         .order("created_at", { ascending: false });
 
       if (error) {

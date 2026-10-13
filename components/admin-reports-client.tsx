@@ -16,7 +16,9 @@ import {
   FileText,
   Wrench,
   Check,
+  Archive,
   Trash2,
+  RotateCcw,
   RotateCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,10 +66,15 @@ export function AdminReportsClient() {
   const isAdmin = useIsAdmin();
   const [reports, setReports] = useState<StreetlightReport[]>([]);
   const [teams, setTeams] = useState<MaintenanceTeamConfig[]>([]);
+  const [viewMode, setViewMode] = useState<"active" | "archived" | "deleted">("active");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [selectedReport, setSelectedReport] = useState<StreetlightReport | null>(null);
+  const [reportToArchive, setReportToArchive] = useState<StreetlightReport | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<StreetlightReport | null>(null);
+  const [reportToRestore, setReportToRestore] = useState<StreetlightReport | null>(null);
   const [crewToAssign, setCrewToAssign] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
   const [isPhotoLoading, setIsPhotoLoading] = useState<boolean>(false);
@@ -119,6 +126,10 @@ export function AdminReportsClient() {
           status,
           assigned_team_id,
           created_at,
+          is_archived,
+          archived_at,
+          is_deleted,
+          deleted_at,
           barangays (
             id,
             name
@@ -192,6 +203,10 @@ export function AdminReportsClient() {
             assignedTeam: assignedTeamName,
             assignedTeamId,
             reportedDate,
+            isArchived: Boolean(row.is_archived),
+            archivedAt: row.archived_at || null,
+            isDeleted: Boolean(row.is_deleted),
+            deletedAt: row.deleted_at || null,
           };
         });
 
@@ -336,10 +351,30 @@ export function AdminReportsClient() {
     };
   }, [selectedReport?.id, selectedReport?.photoUrl, supabase]);
 
-  const filteredReports =
-    statusFilter === "All"
-      ? reports
-      : reports.filter((r) => r.status === statusFilter);
+  const activeReports = useMemo(
+    () => reports.filter((r) => !r.isArchived && !r.isDeleted),
+    [reports]
+  );
+  const archivedReports = useMemo(
+    () => reports.filter((r) => r.isArchived && !r.isDeleted),
+    [reports]
+  );
+  const deletedReports = useMemo(
+    () => reports.filter((r) => r.isDeleted),
+    [reports]
+  );
+
+  const currentViewReports = useMemo(() => {
+    if (viewMode === "archived") return archivedReports;
+    if (viewMode === "deleted") return deletedReports;
+    return activeReports;
+  }, [viewMode, activeReports, archivedReports, deletedReports]);
+
+  const filteredReports = useMemo(() => {
+    return statusFilter === "All"
+      ? currentViewReports
+      : currentViewReports.filter((r) => r.status === statusFilter);
+  }, [statusFilter, currentViewReports]);
 
   const handleStatusChange = async (id: string, newStatus: ReportStatus) => {
     try {
@@ -432,35 +467,145 @@ export function AdminReportsClient() {
     }
   };
 
-  const handleDeleteReport = async (reportId: string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this incident report? This action cannot be undone."
-    );
-    if (!confirmed) return;
-
+  // 1. Safe Archive Report (preserves operational status, never hard-deletes)
+  const handleConfirmArchive = async () => {
+    if (!reportToArchive) return;
+    setIsActionLoading(true);
     try {
-      const { error: deleteError } = await supabase
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
         .from("reports")
-        .delete()
-        .eq("id", reportId);
+        .update({ is_archived: true, archived_at: now })
+        .eq("id", reportToArchive.id);
 
-      if (deleteError) {
-        console.error("Error deleting report from Supabase:", deleteError.message, deleteError);
-        alert(`Failed to delete report: ${deleteError.message}`);
+      if (updateError) {
+        console.error("Error archiving report in Supabase:", updateError.message);
+        alert(`Failed to archive report: ${updateError.message}`);
         return;
       }
 
-      // If successful: remove report from local React reports state
-      setReports((prev) => prev.filter((r) => r.id !== reportId));
-
-      // Close the selected-report dialog if applicable
-      if (selectedReport && selectedReport.id === reportId) {
-        setSelectedReport(null);
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === reportToArchive.id ? { ...r, isArchived: true, archivedAt: now } : r
+        )
+      );
+      if (selectedReport?.id === reportToArchive.id) {
+        setSelectedReport((prev) => (prev ? { ...prev, isArchived: true, archivedAt: now } : null));
       }
+
+      window.dispatchEvent(new Event("butuan-reports-changed"));
+      window.dispatchEvent(new Event("storage"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unexpected error archiving report";
+      console.error("Error archiving report:", err);
+      alert(`Failed to archive report: ${msg}`);
+    } finally {
+      setIsActionLoading(false);
+      setReportToArchive(null);
+    }
+  };
+
+  // 2. Safe Soft-Delete Report (preserves previous archive state, never hard-deletes)
+  const handleConfirmDelete = async () => {
+    if (!reportToDelete) return;
+    setIsActionLoading(true);
+    try {
+      const now = new Date().toISOString();
+      // SAFEGUARD: Never call .delete()! Soft-delete sets is_deleted to true while preserving is_archived.
+      const { error: updateError } = await supabase
+        .from("reports")
+        .update({ is_deleted: true, deleted_at: now })
+        .eq("id", reportToDelete.id);
+
+      if (updateError) {
+        console.error("Error soft-deleting report in Supabase:", updateError.message);
+        alert(`Failed to delete report: ${updateError.message}`);
+        return;
+      }
+
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === reportToDelete.id ? { ...r, isDeleted: true, deletedAt: now } : r
+        )
+      );
+      if (selectedReport?.id === reportToDelete.id) {
+        setSelectedReport((prev) => (prev ? { ...prev, isDeleted: true, deletedAt: now } : null));
+      }
+
+      window.dispatchEvent(new Event("butuan-reports-changed"));
+      window.dispatchEvent(new Event("storage"));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unexpected error deleting report";
       console.error("Error deleting report:", err);
       alert(`Failed to delete report: ${msg}`);
+    } finally {
+      setIsActionLoading(false);
+      setReportToDelete(null);
+    }
+  };
+
+  // 3. Safe Restore Report
+  // Safeguard 4:
+  // - If restoring from Deleted: sets is_deleted = false, leaving is_archived intact.
+  //   If it was archived before deletion, it correctly returns to Archived Reports.
+  // - If restoring from Archived: sets is_archived = false, returning to Active Reports.
+  const handleConfirmRestore = async () => {
+    if (!reportToRestore) return;
+    setIsActionLoading(true);
+    try {
+      const updatePayload: Record<string, any> = {};
+      const isRestoringFromDeleted = Boolean(reportToRestore.isDeleted);
+
+      if (isRestoringFromDeleted) {
+        updatePayload.is_deleted = false;
+        updatePayload.deleted_at = null;
+      } else {
+        updatePayload.is_archived = false;
+        updatePayload.archived_at = null;
+      }
+
+      const { error: updateError } = await supabase
+        .from("reports")
+        .update(updatePayload)
+        .eq("id", reportToRestore.id);
+
+      if (updateError) {
+        console.error("Error restoring report in Supabase:", updateError.message);
+        alert(`Failed to restore report: ${updateError.message}`);
+        return;
+      }
+
+      setReports((prev) =>
+        prev.map((r) => {
+          if (r.id !== reportToRestore.id) return r;
+          if (isRestoringFromDeleted) {
+            return { ...r, isDeleted: false, deletedAt: null };
+          } else {
+            return { ...r, isArchived: false, archivedAt: null };
+          }
+        })
+      );
+
+      if (selectedReport?.id === reportToRestore.id) {
+        setSelectedReport((prev) => {
+          if (!prev) return null;
+          if (isRestoringFromDeleted) {
+            return { ...prev, isDeleted: false, deletedAt: null };
+          } else {
+            return { ...prev, isArchived: false, archivedAt: null };
+          }
+        });
+      }
+
+      window.dispatchEvent(new Event("butuan-reports-changed"));
+      window.dispatchEvent(new Event("storage"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unexpected error restoring report";
+      console.error("Error restoring report:", err);
+      alert(`Failed to restore report: ${msg}`);
+    } finally {
+      setIsActionLoading(false);
+      setReportToRestore(null);
     }
   };
 
@@ -521,16 +666,76 @@ export function AdminReportsClient() {
 
       {/* Main Streetlight Incident Table */}
       <Card id="reports">
-        <CardHeader className="border-b">
+        <CardHeader className="border-b space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-lg">City-Wide Streetlight Reports</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <span>City-Wide Streetlight Reports</span>
+                {viewMode === "archived" && (
+                  <Badge variant="secondary" className="text-[11px] gap-1 font-normal">
+                    <Archive className="size-3" />
+                    Archived
+                  </Badge>
+                )}
+                {viewMode === "deleted" && (
+                  <Badge variant="destructive" className="text-[11px] gap-1 font-normal">
+                    <Trash2 className="size-3" />
+                    Deleted (Trash)
+                  </Badge>
+                )}
+              </CardTitle>
               <CardDescription>
-                Live monitoring queue from all Butuan City barangays and resident submissions.
+                {viewMode === "active" && "Live monitoring queue from all Butuan City barangays and resident submissions."}
+                {viewMode === "archived" && "Archived incident records preserved for historical tracking. Excluded from active monitoring."}
+                {viewMode === "deleted" && "Soft-deleted incident records in trash. Recoverable to active or archived queues."}
               </CardDescription>
             </div>
 
-            {/* Status Filter Buttons */}
+            {/* View Mode Switcher: Active | Archived | Deleted */}
+            <div className="inline-flex items-center rounded-lg border bg-muted/40 p-0.5 self-start sm:self-auto">
+              <Button
+                variant={viewMode === "active" ? "secondary" : "ghost"}
+                size="xs"
+                onClick={() => setViewMode("active")}
+                className="text-xs font-medium shadow-2xs gap-1.5"
+              >
+                Active
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-tight font-mono">
+                  {activeReports.length}
+                </Badge>
+              </Button>
+              <Button
+                variant={viewMode === "archived" ? "secondary" : "ghost"}
+                size="xs"
+                onClick={() => setViewMode("archived")}
+                className="text-xs font-medium shadow-2xs gap-1.5"
+              >
+                <Archive className="size-3" />
+                Archived
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-tight font-mono">
+                  {archivedReports.length}
+                </Badge>
+              </Button>
+              <Button
+                variant={viewMode === "deleted" ? "secondary" : "ghost"}
+                size="xs"
+                onClick={() => setViewMode("deleted")}
+                className="text-xs font-medium shadow-2xs gap-1.5"
+              >
+                <Trash2 className="size-3" />
+                Deleted
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-tight font-mono">
+                  {deletedReports.length}
+                </Badge>
+              </Button>
+            </div>
+          </div>
+
+          {/* Operational Status Filter Buttons */}
+          <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+            <span className="text-xs text-muted-foreground font-medium">
+              Filter by Operational Status:
+            </span>
             <div className="flex flex-wrap items-center gap-1.5">
               {(["All", "Pending", "In Progress", "Resolved"] as const).map((status) => (
                 <Button
@@ -590,7 +795,11 @@ export function AdminReportsClient() {
                             </span>
                           </>
                         ) : (
-                          <span>No incident reports found matching current criteria.</span>
+                          <span>
+                            {viewMode === "active" && "No active incident reports found matching current criteria."}
+                            {viewMode === "archived" && "No archived reports found."}
+                            {viewMode === "deleted" && "No deleted reports in trash."}
+                          </span>
                         )}
                       </div>
                     </TableCell>
@@ -716,7 +925,7 @@ export function AdminReportsClient() {
                         </Badge>
                       </TableCell>
 
-                      {/* Action Button */}
+                      {/* Action Buttons */}
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button
@@ -731,19 +940,84 @@ export function AdminReportsClient() {
                             <Eye className="size-3 mr-1" />
                             View
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteReport(report.id);
-                            }}
-                            className="text-xs text-destructive hover:bg-destructive/10"
-                            title="Delete report"
-                          >
-                            <Trash2 className="size-3.5 mr-1" />
-                            Delete
-                          </Button>
+
+                          {viewMode === "active" && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReportToArchive(report);
+                                }}
+                                className="text-xs text-muted-foreground hover:text-foreground"
+                                title="Archive report"
+                              >
+                                <Archive className="size-3.5 mr-1" />
+                                Archive
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReportToDelete(report);
+                                }}
+                                className="text-xs text-destructive hover:bg-destructive/10"
+                                title="Delete report (Soft Delete)"
+                              >
+                                <Trash2 className="size-3.5 mr-1" />
+                                Delete
+                              </Button>
+                            </>
+                          )}
+
+                          {viewMode === "archived" && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReportToRestore(report);
+                                }}
+                                className="text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                title="Restore to active reports"
+                              >
+                                <RotateCcw className="size-3.5 mr-1" />
+                                Restore
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReportToDelete(report);
+                                }}
+                                className="text-xs text-destructive hover:bg-destructive/10"
+                                title="Move to deleted reports"
+                              >
+                                <Trash2 className="size-3.5 mr-1" />
+                                Delete
+                              </Button>
+                            </>
+                          )}
+
+                          {viewMode === "deleted" && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReportToRestore(report);
+                              }}
+                              className="text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                              title="Restore report"
+                            >
+                              <RotateCcw className="size-3.5 mr-1" />
+                              Restore
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -756,10 +1030,11 @@ export function AdminReportsClient() {
 
         <CardFooter className="border-t py-3 text-xs text-muted-foreground flex items-center justify-between">
           <span>
-            Showing {filteredReports.length} of {reports.length} incident reports
+            Showing {filteredReports.length} of {currentViewReports.length}{" "}
+            {viewMode === "active" ? "active" : viewMode === "archived" ? "archived" : "deleted"} incident reports
           </span>
           <span className="text-xs text-muted-foreground">
-            Synchronized with Supabase public.reports table.
+            Synchronized with Supabase public.reports table (Safe Archive & Soft-Delete enabled).
           </span>
         </CardFooter>
       </Card>
@@ -986,14 +1261,257 @@ export function AdminReportsClient() {
           )}
 
           <DialogFooter className="sm:justify-between items-center" showCloseButton>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {selectedReport && !selectedReport.isDeleted && !selectedReport.isArchived && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setReportToArchive(selectedReport)}
+                    className="gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Archive className="size-3.5" />
+                    Archive Report
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="xs"
+                    onClick={() => setReportToDelete(selectedReport)}
+                    className="gap-1 text-xs"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete Report
+                  </Button>
+                </>
+              )}
+
+              {selectedReport && selectedReport.isArchived && !selectedReport.isDeleted && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setReportToRestore(selectedReport)}
+                    className="gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Restore to Active
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="xs"
+                    onClick={() => setReportToDelete(selectedReport)}
+                    className="gap-1 text-xs"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete Report
+                  </Button>
+                </>
+              )}
+
+              {selectedReport && selectedReport.isDeleted && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setReportToRestore(selectedReport)}
+                  className="gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                >
+                  <RotateCcw className="size-3.5" />
+                  Restore Report
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 1. Archive Incident Report Confirmation Dialog */}
+      <Dialog
+        open={!!reportToArchive}
+        onOpenChange={(open) => !open && !isActionLoading && setReportToArchive(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Archive className="size-4" />
+              </div>
+              <DialogTitle className="text-base font-semibold">
+                Archive Incident Report
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground pt-1.5">
+              Are you sure you want to archive incident report{" "}
+              <strong className="font-mono text-foreground">
+                {reportToArchive?.id}
+              </strong>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex flex-col gap-1.5">
+            <span className="font-semibold text-foreground text-xs">
+              Archive Safeguards:
+            </span>
+            <ul className="list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+              <li>The report will be safely moved to the <strong>Archived Reports</strong> view.</li>
+              <li>Its operational status (<strong>{reportToArchive?.status}</strong>), assigned crew, and history are preserved.</li>
+              <li>Archived reports are excluded from active monitoring counts and can be restored at any time.</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="flex-row gap-2 sm:justify-end">
             <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => setReportToArchive(null)}
+              disabled={isActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="xs"
+              onClick={handleConfirmArchive}
+              disabled={isActionLoading}
+              className="gap-1.5"
+            >
+              <Archive className="size-3.5" />
+              {isActionLoading ? "Archiving..." : "Archive Report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 2. Soft-Delete Incident Report Confirmation Dialog */}
+      <Dialog
+        open={!!reportToDelete}
+        onOpenChange={(open) => !open && !isActionLoading && setReportToDelete(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <Trash2 className="size-4" />
+              </div>
+              <DialogTitle className="text-base font-semibold">
+                Move Report to Trash
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground pt-1.5">
+              Are you sure you want to delete incident report{" "}
+              <strong className="font-mono text-foreground">
+                {reportToDelete?.id}
+              </strong>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-destructive/5 border-destructive/20 p-3 text-xs text-muted-foreground flex flex-col gap-1.5">
+            <span className="font-semibold text-destructive text-xs">
+              Soft-Delete Safeguards:
+            </span>
+            <ul className="list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+              <li>This is a safe soft-delete. The report is <strong>never permanently removed</strong> from Supabase.</li>
+              <li>The report will be moved to the <strong>Deleted Reports</strong> view.</li>
+              <li>Its original operational status, assignments, landmark, and history remain intact.</li>
+              <li>You can restore this report from Deleted Reports at any time.</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="flex-row gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => setReportToDelete(null)}
+              disabled={isActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
               variant="destructive"
               size="xs"
-              onClick={() => selectedReport && handleDeleteReport(selectedReport.id)}
-              className="gap-1 text-xs"
+              onClick={handleConfirmDelete}
+              disabled={isActionLoading}
+              className="gap-1.5"
             >
               <Trash2 className="size-3.5" />
-              Delete Report
+              {isActionLoading ? "Deleting..." : "Move to Trash"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 3. Restore Incident Report Confirmation Dialog */}
+      <Dialog
+        open={!!reportToRestore}
+        onOpenChange={(open) => !open && !isActionLoading && setReportToRestore(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <RotateCcw className="size-4" />
+              </div>
+              <DialogTitle className="text-base font-semibold">
+                Restore Incident Report
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground pt-1.5">
+              Restore incident report{" "}
+              <strong className="font-mono text-foreground">
+                {reportToRestore?.id}
+              </strong>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex flex-col gap-1.5">
+            <span className="font-semibold text-foreground text-xs">
+              Restore Target:
+            </span>
+            <p className="text-[11px] leading-relaxed">
+              {reportToRestore?.isDeleted ? (
+                reportToRestore.isArchived ? (
+                  <>
+                    This report was <strong>Archived</strong> prior to deletion. Restoring it will return it to your <strong>Archived Reports</strong> view.
+                  </>
+                ) : (
+                  <>
+                    This report will be restored to your <strong>Active Reports</strong> queue with its original operational status (<strong>{reportToRestore.status}</strong>).
+                  </>
+                )
+              ) : (
+                <>
+                  This report will be restored to your <strong>Active Reports</strong> queue with its original operational status (<strong>{reportToRestore?.status}</strong>).
+                </>
+              )}
+            </p>
+          </div>
+
+          <DialogFooter className="flex-row gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => setReportToRestore(null)}
+              disabled={isActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="xs"
+              onClick={handleConfirmRestore}
+              disabled={isActionLoading}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700"
+            >
+              <RotateCcw className="size-3.5" />
+              {isActionLoading ? "Restoring..." : "Confirm Restore"}
             </Button>
           </DialogFooter>
         </DialogContent>

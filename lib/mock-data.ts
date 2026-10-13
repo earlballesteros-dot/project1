@@ -16,6 +16,10 @@ export interface StreetlightReport {
   assignedTeam: string;
   assignedTeamId?: string | null;
   residentName: string;
+  isArchived?: boolean;
+  archivedAt?: string | null;
+  isDeleted?: boolean;
+  deletedAt?: string | null;
 }
 
 export interface DashboardStats {
