@@ -12,26 +12,12 @@ export interface MaintenanceTeamConfig {
   availability: string;
 }
 
-// Exactly the 12 supported barangays in Butuan City project scope
-export const SUPPORTED_12_BARANGAYS = [
-  "Ampayon",
-  "Baan Riverside",
-  "Bancasi",
-  "Bonbon",
-  "Doongan",
-  "Golden Ribbon",
-  "Holy Redeemer",
-  "Libertad",
-  "Ong Yiu",
-  "Pangabugan",
-  "San Vicente",
-  "Villa Kananga",
-] as const;
+import { SUPPORTED_BARANGAYS_12 } from "./settings-store";
+
+// Exactly the 12 supported barangays in Butuan City project scope (sourced canonically from settings-store)
+export const SUPPORTED_12_BARANGAYS = SUPPORTED_BARANGAYS_12;
 
 export type SupportedBarangay = (typeof SUPPORTED_12_BARANGAYS)[number];
-
-// No hardcoded sample or demonstration teams; Supabase maintenance_teams is the source of truth
-export const BUTUAN_MAINTENANCE_TEAMS: MaintenanceTeamConfig[] = [];
 
 const STORAGE_KEY = "butuan_maintenance_teams_roster";
 
@@ -135,39 +121,6 @@ export function updateTeamAssignedBarangays(
     return team;
   });
   return saveStoredTeams(updated);
-}
-
-/**
- * Reset all teams to default baseline roster and barangay assignments.
- */
-export function resetTeamsToDefault(): MaintenanceTeamConfig[] {
-  return saveStoredTeams([]);
-}
-
-/**
- * Supabase Data Access Layer for Maintenance Teams.
- * Queries public.maintenance_teams and caches the result.
- */
-export async function fetchTeamsFromSupabase(): Promise<MaintenanceTeamConfig[] | null> {
-  try {
-    const { supabase } = await import("./supabase");
-    const { data, error } = await supabase
-      .from("maintenance_teams")
-      .select("*")
-      .order("team_code", { ascending: true });
-
-    if (error || !data) {
-      console.error("Error querying maintenance_teams from Supabase:", error?.message);
-      return null;
-    }
-
-    const mapped = data.map(mapDbTeamToConfig);
-    saveStoredTeams(mapped);
-    return mapped;
-  } catch (err) {
-    console.error("Failed to query maintenance_teams:", err);
-    return null;
-  }
 }
 
 export async function syncTeamToSupabase(team: MaintenanceTeamConfig): Promise<boolean> {

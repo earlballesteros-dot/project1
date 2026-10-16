@@ -23,11 +23,8 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  type StreetlightReport,
-  type ReportStatus,
-  type PriorityLevel,
-} from "@/lib/mock-data";
+import { type StreetlightReport } from "@/lib/mock-data";
+import { mapDbRowToReport } from "@/lib/reports-store";
 import { useAuth } from "@clerk/nextjs";
 import { useIsAdmin } from "@/lib/roles";
 import { createClerkSupabaseClient } from "@/lib/supabase";
@@ -101,58 +98,7 @@ export default function AdminDashboard() {
         }
 
         if (reportsResponse.data && isMounted) {
-          const mappedReports: StreetlightReport[] = reportsResponse.data.map((row: any) => {
-            // barangays foreign key relation
-            let barangayName = "Unknown";
-            if (row.barangays) {
-              if (Array.isArray(row.barangays) && row.barangays.length > 0) {
-                barangayName = row.barangays[0]?.name || "Unknown";
-              } else if (typeof row.barangays === "object" && "name" in row.barangays) {
-                barangayName = row.barangays.name || "Unknown";
-              }
-            }
-
-            // maintenance_teams foreign key relation
-            let assignedTeamName = "Pending Dispatch";
-            if (row.maintenance_teams) {
-              if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
-                assignedTeamName = row.maintenance_teams[0]?.team_name || "Pending Dispatch";
-              } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
-                assignedTeamName = row.maintenance_teams.team_name || "Pending Dispatch";
-              }
-            }
-
-            // format created_at date
-            let reportedDate = "";
-            if (row.created_at) {
-              try {
-                const dateObj = new Date(row.created_at);
-                reportedDate = isNaN(dateObj.getTime())
-                  ? String(row.created_at).split("T")[0]
-                  : dateObj.toISOString().split("T")[0];
-              } catch {
-                reportedDate = String(row.created_at).split("T")[0];
-              }
-            } else {
-              reportedDate = new Date().toISOString().split("T")[0];
-            }
-
-            return {
-              id: row.id,
-              residentName: row.reporter_name || "Anonymous",
-              contactInfo: row.contact_info || undefined,
-              barangay: barangayName,
-              landmark: row.street_purok_landmark || "",
-              poleNumber: row.pole_tag_id || "N/A",
-              issueType: row.problem_type || "Streetlight Issue",
-              description: row.description_hazard || "",
-              photoUrl: row.photo_url || undefined,
-              priority: (row.priority as PriorityLevel) || "High",
-              status: (row.status as ReportStatus) || "Pending",
-              assignedTeam: assignedTeamName,
-              reportedDate,
-            };
-          });
+          const mappedReports: StreetlightReport[] = reportsResponse.data.map(mapDbRowToReport);
 
           setReports(mappedReports);
         }

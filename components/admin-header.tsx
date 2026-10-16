@@ -15,31 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getStoredReports } from "@/lib/reports-store";
-import type { StreetlightReport, PriorityLevel, ReportStatus } from "@/lib/mock-data";
+import { getStoredReports, mapDbRowToReport } from "@/lib/reports-store";
+import type { StreetlightReport } from "@/lib/mock-data";
 import { useIsAdmin } from "@/lib/roles";
 import { useAuth } from "@clerk/nextjs";
 import { createClerkSupabaseClient, supabase as defaultSupabase } from "@/lib/supabase";
 
 interface AdminHeaderProps {
   onToggleSidebar: () => void;
-}
-
-interface DbReportRow {
-  id: string;
-  reporter_name?: string | null;
-  contact_info?: string | null;
-  street_purok_landmark?: string | null;
-  pole_tag_id?: string | null;
-  problem_type?: string | null;
-  description_hazard?: string | null;
-  photo_url?: string | null;
-  priority?: string | null;
-  status?: string | null;
-  assigned_team_id?: string | null;
-  created_at?: string | null;
-  barangays?: { id?: string; name?: string } | { id?: string; name?: string }[] | null;
-  maintenance_teams?: { id?: string; team_name?: string } | { id?: string; team_name?: string }[] | null;
 }
 
 const READ_NOTIFICATIONS_STORAGE_KEY = "butuan_read_notifications";
@@ -111,56 +94,7 @@ export function AdminHeader({ onToggleSidebar }: AdminHeaderProps) {
         }
 
         if (data && isMounted) {
-          const mapped: StreetlightReport[] = (data as unknown as DbReportRow[]).map((row) => {
-            let barangayName = "Unknown";
-            if (row.barangays) {
-              if (Array.isArray(row.barangays) && row.barangays.length > 0) {
-                barangayName = row.barangays[0]?.name || "Unknown";
-              } else if (typeof row.barangays === "object" && "name" in row.barangays) {
-                barangayName = row.barangays.name || "Unknown";
-              }
-            }
-
-            let assignedTeamName = "Pending Dispatch";
-            if (row.maintenance_teams) {
-              if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
-                assignedTeamName = row.maintenance_teams[0]?.team_name || "Pending Dispatch";
-              } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
-                assignedTeamName = row.maintenance_teams.team_name || "Pending Dispatch";
-              }
-            }
-
-            let reportedDate = "";
-            if (row.created_at) {
-              try {
-                const dateObj = new Date(row.created_at);
-                reportedDate = isNaN(dateObj.getTime())
-                  ? String(row.created_at).split("T")[0]
-                  : dateObj.toISOString().split("T")[0];
-              } catch {
-                reportedDate = String(row.created_at).split("T")[0];
-              }
-            } else {
-              reportedDate = new Date().toISOString().split("T")[0];
-            }
-
-            return {
-              id: row.id,
-              residentName: row.reporter_name || "Anonymous",
-              contactInfo: row.contact_info || undefined,
-              barangay: barangayName,
-              landmark: row.street_purok_landmark || "",
-              poleNumber: row.pole_tag_id || "N/A",
-              issueType: row.problem_type || "Streetlight Issue",
-              description: row.description_hazard || "",
-              photoUrl: row.photo_url || undefined,
-              priority: (row.priority as PriorityLevel) || "High",
-              status: (row.status as ReportStatus) || "Pending",
-              assignedTeam: assignedTeamName,
-              reportedDate,
-            };
-          });
-
+          const mapped: StreetlightReport[] = data.map(mapDbRowToReport);
           setReports(mapped);
         }
       } catch (err) {

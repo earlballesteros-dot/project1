@@ -47,7 +47,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "cn";
-import { type StreetlightReport, type PriorityLevel, type ReportStatus } from "@/lib/mock-data";
+import { type StreetlightReport } from "@/lib/mock-data";
+import { mapDbRowToReport } from "@/lib/reports-store";
 import {
   type MaintenanceTeamConfig,
   mapDbTeamToConfig,
@@ -67,7 +68,6 @@ export function AdminTeamsClient() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isLoadingTeams, setIsLoadingTeams] = useState(true);
-  const [isLoadingReports, setIsLoadingReports] = useState(true);
 
   // Dynamic active barangays from Supabase
   const [availableBarangays, setAvailableBarangays] = useState<string[]>([]);
@@ -127,7 +127,6 @@ export function AdminTeamsClient() {
 
   // Fetch actual incident reports from Supabase
   const fetchReports = useCallback(async () => {
-    setIsLoadingReports(true);
     try {
       const { data, error } = await supabase
         .from("reports")
@@ -163,66 +162,11 @@ export function AdminTeamsClient() {
       }
 
       if (data) {
-        const mapped: StreetlightReport[] = data.map((row: any) => {
-          let barangayName = "Unknown";
-          if (row.barangays) {
-            if (Array.isArray(row.barangays) && row.barangays.length > 0) {
-              barangayName = row.barangays[0]?.name || "Unknown";
-            } else if (typeof row.barangays === "object" && "name" in row.barangays) {
-              barangayName = row.barangays.name || "Unknown";
-            }
-          }
-
-          let assignedTeamName = "";
-          let assignedTeamId: string | null = row.assigned_team_id || null;
-          if (row.maintenance_teams) {
-            if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
-              assignedTeamName = row.maintenance_teams[0]?.team_name || "";
-              if (!assignedTeamId) assignedTeamId = row.maintenance_teams[0]?.id || null;
-            } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
-              assignedTeamName = row.maintenance_teams.team_name || "";
-              if (!assignedTeamId) assignedTeamId = row.maintenance_teams.id || null;
-            }
-          }
-
-          let reportedDate = "";
-          if (row.created_at) {
-            try {
-              const dateObj = new Date(row.created_at);
-              reportedDate = isNaN(dateObj.getTime())
-                ? String(row.created_at).split("T")[0]
-                : dateObj.toISOString().split("T")[0];
-            } catch {
-              reportedDate = String(row.created_at).split("T")[0];
-            }
-          } else {
-            reportedDate = new Date().toISOString().split("T")[0];
-          }
-
-          return {
-            id: row.id,
-            residentName: row.reporter_name || "Anonymous",
-            contactInfo: row.contact_info || undefined,
-            barangay: barangayName,
-            landmark: row.street_purok_landmark || "",
-            poleNumber: row.pole_tag_id || "N/A",
-            issueType: row.problem_type || "Streetlight Issue",
-            description: row.description_hazard || "",
-            photoUrl: row.photo_url || undefined,
-            priority: (row.priority as PriorityLevel) || "High",
-            status: (row.status as ReportStatus) || "Pending",
-            assignedTeam: assignedTeamName,
-            assignedTeamId,
-            reportedDate,
-          };
-        });
-
+        const mapped: StreetlightReport[] = data.map(mapDbRowToReport);
         setReports(mapped);
       }
     } catch (err) {
       console.error("Failed to query reports for maintenance teams:", err);
-    } finally {
-      setIsLoadingReports(false);
     }
   }, []);
 

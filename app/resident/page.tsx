@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useAuth, useUser } from "@clerk/nextjs";
-import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import {
   Lightbulb,
   Clock,
   CheckCircle2,
-  AlertCircle,
   FileText,
   MapPin,
   HelpCircle,
@@ -19,7 +17,6 @@ import {
   PhoneCall,
   AlertTriangle,
   RotateCcw,
-  Sparkles,
   Camera,
   Loader2,
   Archive,
@@ -55,6 +52,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { type StreetlightReport } from "@/lib/mock-data";
+import { mapDbRowToReport } from "@/lib/reports-store";
 import { supabase } from "@/lib/supabase";
 
 interface DbBarangay {
@@ -75,7 +73,6 @@ const PROBLEM_TYPES = [
 
 export default function ResidentProblemReportingPage() {
   const { userId, isLoaded } = useAuth();
-  const { user } = useUser();
 
   // Form fields state - initialize blank
   const [reporterName, setReporterName] = useState("");
@@ -166,47 +163,7 @@ export default function ResidentProblemReportingPage() {
       if (error) {
         console.error("Error fetching resident reports from Supabase:", error.message);
       } else if (data) {
-        const mapped: StreetlightReport[] = data.map((row: any) => {
-          let barangayName = "Unknown";
-          if (row.barangays) {
-            if (Array.isArray(row.barangays) && row.barangays.length > 0) {
-              barangayName = row.barangays[0]?.name || "Unknown";
-            } else if (typeof row.barangays === "object" && "name" in row.barangays) {
-              barangayName = row.barangays.name || "Unknown";
-            }
-          }
-
-          let reportedDate = "";
-          if (row.created_at) {
-            try {
-              const d = new Date(row.created_at);
-              reportedDate = isNaN(d.getTime())
-                ? String(row.created_at).split("T")[0]
-                : d.toISOString().split("T")[0];
-            } catch {
-              reportedDate = String(row.created_at).split("T")[0];
-            }
-          } else {
-            reportedDate = new Date().toISOString().split("T")[0];
-          }
-
-          return {
-            id: row.id,
-            barangay: barangayName,
-            landmark: row.street_purok_landmark || "",
-            poleNumber: row.pole_tag_id || "N/A",
-            issueType: row.problem_type || "Streetlight Issue",
-            description: row.description_hazard || "",
-            contactInfo: row.contact_info || undefined,
-            photoUrl: row.photo_url || undefined,
-            reportedDate,
-            status: (row.status as any) || "Pending",
-            priority: (row.priority as any) || "High",
-            assignedTeam: "Pending Dispatch",
-            residentName: row.reporter_name || "Resident",
-          };
-        });
-
+        const mapped: StreetlightReport[] = data.map(mapDbRowToReport);
         setReportsList(mapped);
       }
     } catch (err) {
@@ -513,15 +470,6 @@ export default function ResidentProblemReportingPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleResetForm = () => {
-    setStreetLandmark("");
-    setPoleNumber("");
-    setProblemType("Total Outage / Unlit Street");
-    setProblemDescription("");
-    handleRemovePhoto();
-    setSubmittedTicket(null);
   };
 
   // Helper to determine if a report belongs to the resident (all reports in list belong to authenticated user)

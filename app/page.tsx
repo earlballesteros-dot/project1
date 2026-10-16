@@ -5,7 +5,6 @@ import {
   MapPin,
   CheckCircle2,
   Wrench,
-  Activity,
   PhoneCall,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardContent,
   CardFooter,
 } from "@/components/ui/card";
 import { Navbar } from "@/components/navbar";

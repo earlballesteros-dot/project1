@@ -62,7 +62,6 @@ import {
   getStoredSettings,
   saveStoredSettings,
   DEFAULT_SETTINGS,
-  SUPPORTED_BARANGAYS_12,
   type SystemSettings,
 } from "@/lib/settings-store";
 import { getStoredTeams } from "@/lib/teams-data";
@@ -182,27 +181,6 @@ export function AdminSettingsClient() {
     setTimeout(() => {
       setSavedNotice(false);
     }, 3500);
-  };
-
-  const toggleBarangay = (barangay: string) => {
-    setSettings((prev) => {
-      const exists = prev.coverageBarangays.includes(barangay);
-      let updated: string[];
-      if (exists) {
-        if (prev.coverageBarangays.length <= 1) return prev;
-        updated = prev.coverageBarangays.filter((b) => b !== barangay);
-      } else {
-        updated = [...prev.coverageBarangays, barangay];
-      }
-      return { ...prev, coverageBarangays: updated };
-    });
-  };
-
-  const handleSelectAllBarangays = () => {
-    setSettings((prev) => ({
-      ...prev,
-      coverageBarangays: [...SUPPORTED_BARANGAYS_12],
-    }));
   };
 
   // Find assigned team for a barangay

@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
-  ClipboardList,
   AlertOctagon,
   Clock,
   Download,
@@ -50,8 +49,8 @@ import {
 import {
   type StreetlightReport,
   type ReportStatus,
-  type PriorityLevel,
 } from "@/lib/mock-data";
+import { mapDbRowToReport } from "@/lib/reports-store";
 import {
   type MaintenanceTeamConfig,
   mapDbTeamToConfig,
@@ -149,67 +148,7 @@ export function AdminReportsClient() {
       }
 
       if (data) {
-        const mappedReports: StreetlightReport[] = data.map((row: any) => {
-          // barangays foreign key relation
-          let barangayName = "Unknown";
-          if (row.barangays) {
-            if (Array.isArray(row.barangays) && row.barangays.length > 0) {
-              barangayName = row.barangays[0]?.name || "Unknown";
-            } else if (typeof row.barangays === "object" && "name" in row.barangays) {
-              barangayName = row.barangays.name || "Unknown";
-            }
-          }
-
-          // maintenance_teams foreign key relation
-          let assignedTeamName = "";
-          let assignedTeamId: string | null = row.assigned_team_id || null;
-          if (row.maintenance_teams) {
-            if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
-              assignedTeamName = row.maintenance_teams[0]?.team_name || "";
-              if (!assignedTeamId) assignedTeamId = row.maintenance_teams[0]?.id || null;
-            } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
-              assignedTeamName = row.maintenance_teams.team_name || "";
-              if (!assignedTeamId) assignedTeamId = row.maintenance_teams.id || null;
-            }
-          }
-
-          // format created_at date
-          let reportedDate = "";
-          if (row.created_at) {
-            try {
-              const dateObj = new Date(row.created_at);
-              reportedDate = isNaN(dateObj.getTime())
-                ? String(row.created_at).split("T")[0]
-                : dateObj.toISOString().split("T")[0];
-            } catch {
-              reportedDate = String(row.created_at).split("T")[0];
-            }
-          } else {
-            reportedDate = new Date().toISOString().split("T")[0];
-          }
-
-          return {
-            id: row.id,
-            residentName: row.reporter_name || "Anonymous",
-            contactInfo: row.contact_info || undefined,
-            barangay: barangayName,
-            landmark: row.street_purok_landmark || "",
-            poleNumber: row.pole_tag_id || "N/A",
-            issueType: row.problem_type || "Streetlight Issue",
-            description: row.description_hazard || "",
-            photoUrl: row.photo_url || undefined,
-            priority: (row.priority as PriorityLevel) || "High",
-            status: (row.status as ReportStatus) || "Pending",
-            assignedTeam: assignedTeamName,
-            assignedTeamId,
-            reportedDate,
-            isArchived: Boolean(row.is_archived),
-            archivedAt: row.archived_at || null,
-            isDeleted: Boolean(row.is_deleted),
-            deletedAt: row.deleted_at || null,
-          };
-        });
-
+        const mappedReports: StreetlightReport[] = data.map(mapDbRowToReport);
         setReports(mappedReports);
       }
     } catch (err: unknown) {

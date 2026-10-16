@@ -22,22 +22,6 @@ export interface StreetlightReport {
   deletedAt?: string | null;
 }
 
-export interface DashboardStats {
-  totalReports: number;
-  pendingInspection: number;
-  inProgress: number;
-  resolvedThisMonth: number;
-  averageResolutionHours: number;
-}
-
-export const MOCK_STATS: DashboardStats = {
-  totalReports: 142,
-  pendingInspection: 18,
-  inProgress: 26,
-  resolvedThisMonth: 98,
-  averageResolutionHours: 36,
-};
-
 export const MOCK_REPORTS: StreetlightReport[] = [
   {
     id: "BXU-2026-0104",
@@ -137,50 +121,4 @@ export const MOCK_REPORTS: StreetlightReport[] = [
     assignedTeam: "Team Bravo (Linemen)",
     residentName: "Maria Santos",
   },
-];
-
-export const MOCK_RESIDENT_REPORTS: StreetlightReport[] = [
-  {
-    id: "BXU-2026-0104",
-    barangay: "Libertad",
-    landmark: "Corner J.C. Aquino Ave & Montilla Blvd",
-    poleNumber: "BXU-LIB-048",
-    issueType: "Total Outage / Unlit Pole",
-    description: "Main roadway light completely out since yesterday evening, causing severe dark spot near junction.",
-    contactInfo: "0917 555 2341",
-    reportedDate: "2026-09-23",
-    status: "Pending",
-    priority: "High",
-    assignedTeam: "Pending Dispatch",
-    residentName: "Elena Ramos (You)",
-  },
-  {
-    id: "BXU-2026-0062",
-    barangay: "Libertad",
-    landmark: "Purok 2 near Elementary School",
-    poleNumber: "BXU-LIB-012",
-    issueType: "Flickering Fixture",
-    description: "Lamp turns on and off continuously during peak evening walking hours.",
-    contactInfo: "0917 555 2341",
-    reportedDate: "2026-09-10",
-    status: "Resolved",
-    priority: "Medium",
-    assignedTeam: "Team Alpha (City Engineering)",
-    residentName: "Elena Ramos (You)",
-  },
-];
-
-export const MOCK_BARANGAYS = [
-  "Ampayon",
-  "Baan Riverside",
-  "Bancasi",
-  "Bonbon",
-  "Doongan",
-  "Golden Ribbon",
-  "Holy Redeemer",
-  "Libertad",
-  "Ong Yiu",
-  "Pangabugan",
-  "San Vicente",
-  "Villa Kananga",
 ];

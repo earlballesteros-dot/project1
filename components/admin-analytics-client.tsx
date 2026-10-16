@@ -34,24 +34,12 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { type StreetlightReport } from "@/lib/mock-data";
-import { getStoredReports } from "@/lib/reports-store";
+import { getStoredReports, mapDbRowToReport } from "@/lib/reports-store";
 import { supabase } from "@/lib/supabase";
+import { SUPPORTED_BARANGAYS_12 } from "@/lib/settings-store";
 
-// Fallback list of baseline barangays
-export const SUPPORTED_BARANGAYS = [
-  "Ampayon",
-  "Baan Riverside",
-  "Bancasi",
-  "Bonbon",
-  "Doongan",
-  "Golden Ribbon",
-  "Holy Redeemer",
-  "Libertad",
-  "Ong Yiu",
-  "Pangabugan",
-  "San Vicente",
-  "Villa Kananga",
-] as const;
+// Fallback list of baseline barangays (sourced canonically from settings-store)
+export const SUPPORTED_BARANGAYS = SUPPORTED_BARANGAYS_12;
 
 export function AdminAnalyticsClient() {
   const [reports, setReports] = useState<StreetlightReport[]>([]);
@@ -108,56 +96,7 @@ export function AdminAnalyticsClient() {
 
       // Set live reports from Supabase
       if (reportsResult.data) {
-        const mappedReports: StreetlightReport[] = reportsResult.data.map((row: any) => {
-          let barangayName = "Unknown";
-          if (row.barangays) {
-            if (Array.isArray(row.barangays) && row.barangays.length > 0) {
-              barangayName = row.barangays[0]?.name || "Unknown";
-            } else if (typeof row.barangays === "object" && "name" in row.barangays) {
-              barangayName = row.barangays.name || "Unknown";
-            }
-          }
-
-          let assignedTeamName = "Pending Dispatch";
-          if (row.maintenance_teams) {
-            if (Array.isArray(row.maintenance_teams) && row.maintenance_teams.length > 0) {
-              assignedTeamName = row.maintenance_teams[0]?.team_name || "Pending Dispatch";
-            } else if (typeof row.maintenance_teams === "object" && "team_name" in row.maintenance_teams) {
-              assignedTeamName = row.maintenance_teams.team_name || "Pending Dispatch";
-            }
-          }
-
-          let reportedDate = "";
-          if (row.created_at) {
-            try {
-              const dateObj = new Date(row.created_at);
-              reportedDate = isNaN(dateObj.getTime())
-                ? String(row.created_at).split("T")[0]
-                : dateObj.toISOString().split("T")[0];
-            } catch {
-              reportedDate = String(row.created_at).split("T")[0];
-            }
-          } else {
-            reportedDate = new Date().toISOString().split("T")[0];
-          }
-
-          return {
-            id: row.id,
-            residentName: row.reporter_name || "Anonymous",
-            contactInfo: row.contact_info || undefined,
-            barangay: barangayName,
-            landmark: row.street_purok_landmark || "",
-            poleNumber: row.pole_tag_id || "N/A",
-            issueType: row.problem_type || "Streetlight Issue",
-            description: row.description_hazard || "",
-            photoUrl: row.photo_url || undefined,
-            priority: row.priority || "High",
-            status: row.status || "Pending",
-            assignedTeam: assignedTeamName,
-            reportedDate,
-          };
-        });
-
+        const mappedReports: StreetlightReport[] = reportsResult.data.map(mapDbRowToReport);
         setReports(mappedReports);
       } else {
         // Fallback to local storage if network request failed
