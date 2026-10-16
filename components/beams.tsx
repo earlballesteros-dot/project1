@@ -2,7 +2,6 @@
 
 import React, { useRef, useMemo, useEffect, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { PerspectiveCamera } from "@react-three/drei";
 import * as THREE from "three";
 import { useTheme } from "@/components/theme-provider";
 
@@ -109,7 +108,7 @@ function generateMergedPlanes(
   width: number,
   height: number,
   gap = 0,
-  segments = 100
+  segments = 40
 ): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
   const totalVertices = count * (segments + 1) * 2;
@@ -181,7 +180,7 @@ function BeamsMesh({
   const meshRef = useRef<THREE.Mesh>(null);
 
   const geometry = useMemo(() => {
-    return generateMergedPlanes(count, width, height, 0, 100);
+    return generateMergedPlanes(count, width, height, 0, 40);
   }, [count, width, height]);
 
   const material = useMemo(() => {
@@ -272,7 +271,8 @@ function BeamsMesh({
 
   useFrame((_, delta) => {
     if (meshRef.current && (meshRef.current.material as THREE.ShaderMaterial).uniforms?.time) {
-      (meshRef.current.material as THREE.ShaderMaterial).uniforms.time.value += 0.1 * delta;
+      const clampedDelta = Math.min(delta, 0.1);
+      (meshRef.current.material as THREE.ShaderMaterial).uniforms.time.value += 0.1 * clampedDelta;
     }
   });
 
@@ -291,12 +291,40 @@ export function Beams({
   rotation = 0,
   className = "",
 }: BeamsProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
   const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted || !containerRef.current) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      {
+        root: null,
+        rootMargin: "100px",
+        threshold: 0,
+      }
+    );
+
+    observer.observe(containerRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [mounted]);
 
   if (!mounted) {
     return <div className={`w-full h-full pointer-events-none ${className}`} aria-hidden="true" />;
@@ -309,13 +337,14 @@ export function Beams({
 
   return (
     <div
+      ref={containerRef}
       className={`relative w-full h-full pointer-events-none ${className}`}
       aria-hidden="true"
     >
       <Canvas
-        dpr={[1, 2]}
-        frameloop="always"
-        gl={{ alpha: true, antialias: true }}
+        dpr={1}
+        frameloop={isVisible ? "always" : "never"}
+        gl={{ alpha: true, antialias: true, powerPreference: "low-power" }}
         camera={{ position: [0, 0, 20], fov: 30 }}
         style={{ pointerEvents: "none" }}
       >
@@ -337,7 +366,6 @@ export function Beams({
           />
         </group>
         <ambientLight intensity={isLight ? 0.9 : 0.6} />
-        <PerspectiveCamera makeDefault position={[0, 0, 20]} fov={30} />
       </Canvas>
     </div>
   );

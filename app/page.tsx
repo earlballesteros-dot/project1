@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import { Beams } from "@/components/beams";
+import { HeroBeams } from "@/components/hero-beams";
 import { HeroAction } from "@/components/hero-action";
 import { HeroLiveMetrics, HeroLiveCard } from "@/components/hero-live-status";
 import { isAdmin } from "@/lib/roles-server";
@@ -100,7 +100,7 @@ export default async function Home() {
         <section className="relative overflow-hidden border-b bg-gradient-to-b from-muted/50 via-background to-background py-16 sm:py-24">
           {/* React Bits Beams Background - Hero Only */}
           <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-35 dark:opacity-45">
-            <Beams
+            <HeroBeams
               beamWidth={2}
               beamHeight={15}
               beamNumber={12}

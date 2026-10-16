@@ -57,68 +57,98 @@ async function fetchHeroLiveData() {
   isFetching = true;
 
   try {
-    const { data, error } = await supabase
-      .from("reports")
-      .select(`
-        id,
-        problem_type,
-        pole_tag_id,
-        status,
-        assigned_team_id,
-        created_at,
-        barangays (
-          id,
-          name
-        )
-      `)
-      .eq("is_archived", false)
-      .eq("is_deleted", false)
-      .order("created_at", { ascending: false });
+    const now = new Date();
+    // Calculate current calendar month boundaries aligned with local client time.
+    // Local midnight on the 1st of the current month and 1st of next month,
+    // formatted via toISOString() for exact PostgreSQL timestamptz boundary comparison.
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
 
-    if (error) {
-      console.error("Error loading hero live data from Supabase:", error.message, error);
+    const [recentRes, openRes, dispatchesRes, resolvedRes] = await Promise.all([
+      // 1. Fetch only the latest 3 eligible reports for the live dispatch snapshot card
+      supabase
+        .from("reports")
+        .select(`
+          id,
+          problem_type,
+          pole_tag_id,
+          status,
+          assigned_team_id,
+          created_at,
+          barangays (
+            id,
+            name
+          )
+        `)
+        .eq("is_archived", false)
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: false })
+        .limit(3),
+
+      // 2. Exact count of open reports (status != 'Resolved')
+      supabase
+        .from("reports")
+        .select("*", { count: "exact", head: true })
+        .eq("is_archived", false)
+        .eq("is_deleted", false)
+        .neq("status", "Resolved"),
+
+      // 3. Exact count of active dispatches (status != 'Resolved' and assigned_team_id is not null)
+      supabase
+        .from("reports")
+        .select("*", { count: "exact", head: true })
+        .eq("is_archived", false)
+        .eq("is_deleted", false)
+        .neq("status", "Resolved")
+        .not("assigned_team_id", "is", null),
+
+      // 4. Exact count of resolved reports within the current month
+      supabase
+        .from("reports")
+        .select("*", { count: "exact", head: true })
+        .eq("is_archived", false)
+        .eq("is_deleted", false)
+        .eq("status", "Resolved")
+        .gte("created_at", startOfMonth.toISOString())
+        .lt("created_at", startOfNextMonth.toISOString()),
+    ]);
+
+    const queryError =
+      recentRes.error ||
+      openRes.error ||
+      dispatchesRes.error ||
+      resolvedRes.error;
+
+    if (queryError) {
+      console.error("Error loading hero live data from Supabase:", queryError.message, queryError);
       globalHeroData = {
         ...globalHeroData,
         isLoading: false,
-        error: error.message,
+        error: queryError.message,
         updatedAtText: "Update unavailable",
       };
       notify();
       return;
     }
 
-    const reports: HeroReport[] = (data || []) as unknown as HeroReport[];
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    let resolvedCount = 0;
-    let openCount = 0;
-    let dispatchesCount = 0;
-
-    for (const report of reports) {
-      const isResolved = report.status === "Resolved";
-      if (!isResolved) {
-        openCount++;
-        if (report.assigned_team_id) {
-          dispatchesCount++;
-        }
-      } else if (report.created_at) {
-        try {
-          const reportDate = new Date(report.created_at);
-          if (
-            !isNaN(reportDate.getTime()) &&
-            reportDate.getFullYear() === currentYear &&
-            reportDate.getMonth() === currentMonth
-          ) {
-            resolvedCount++;
-          }
-        } catch {
-          // ignore parsing error
-        }
-      }
+    if (
+      openRes.count === null ||
+      dispatchesRes.count === null ||
+      resolvedRes.count === null
+    ) {
+      const missingCountError = "Incomplete count data received from Supabase";
+      console.error("Error loading hero live data:", missingCountError);
+      globalHeroData = {
+        ...globalHeroData,
+        isLoading: false,
+        error: missingCountError,
+        updatedAtText: "Update unavailable",
+      };
+      notify();
+      return;
     }
 
+    const reports: HeroReport[] = (recentRes.data || []) as unknown as HeroReport[];
     const timeString = now.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
@@ -126,9 +156,9 @@ async function fetchHeroLiveData() {
 
     globalHeroData = {
       reports,
-      resolvedThisMonth: resolvedCount,
-      openReports: openCount,
-      activeDispatches: dispatchesCount,
+      resolvedThisMonth: resolvedRes.count,
+      openReports: openRes.count,
+      activeDispatches: dispatchesRes.count,
       updatedAtText: `Updated at ${timeString}`,
       isLoading: false,
       error: null,
